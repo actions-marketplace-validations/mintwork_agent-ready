@@ -5,7 +5,7 @@
 **Lighthouse for AI coding agents.**
 Score how well Claude Code, Codex and Cursor can work in your repo — then auto-fix the gaps.
 
-[![agent-ready: 100/100](https://img.shields.io/badge/agent--ready-100%2F100-brightgreen)](https://www.npmjs.com/package/agent-ready)
+[![agent-ready: 100/100](https://img.shields.io/badge/agent--ready-100%2F100-brightgreen)](https://github.com/ranjan-mohanty/agent-ready)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-blue)](.github/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![zero dependencies](https://img.shields.io/badge/runtime_deps-0-brightgreen)](package.json)
@@ -87,7 +87,7 @@ npx agent-ready --badge
 ```
 
 ```markdown
-[![agent-ready: 94/100](https://img.shields.io/badge/agent--ready-94%2F100-brightgreen)](https://www.npmjs.com/package/agent-ready)
+[![agent-ready: 94/100](https://img.shields.io/badge/agent--ready-94%2F100-brightgreen)](https://github.com/ranjan-mohanty/agent-ready)
 ```
 
 Paste it at the top of your README. It tells contributors — human and AI — that your repo is
@@ -156,7 +156,14 @@ jobs:
 ```
 
 A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`;
-output `score`, plus a job summary). See [`examples/github-action.yml`](examples/github-action.yml).
+output `score`, plus a job summary):
+
+```yaml
+- uses: ranjan-mohanty/agent-ready@main
+  with: { min-score: 75 }
+```
+
+See [`examples/github-action.yml`](examples/github-action.yml).
 
 ## Configuration
 

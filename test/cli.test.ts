@@ -50,6 +50,8 @@ describe('cli', () => {
     expect(t.out()).toMatch(
       /^\[!\[agent-ready: \d+\/100\]\(https:\/\/img\.shields\.io\/badge\/agent--ready-\d+%2F100-\w+\)\]/,
     );
+    // badges drive people to the project repo
+    expect(t.out()).toContain('](https://github.com/ranjan-mohanty/agent-ready)');
   });
 
   it('gates on --min-score', async () => {

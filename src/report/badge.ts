@@ -1,4 +1,4 @@
-export const BADGE_LINK = 'https://www.npmjs.com/package/agent-ready';
+export const BADGE_LINK = 'https://github.com/ranjan-mohanty/agent-ready';
 
 export function badgeColor(score: number): string {
   if (score >= 90) return 'brightgreen';

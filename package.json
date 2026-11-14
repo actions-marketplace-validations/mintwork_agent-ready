@@ -15,6 +15,14 @@
     "cli"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ranjan-mohanty/agent-ready.git"
+  },
+  "homepage": "https://github.com/ranjan-mohanty/agent-ready#readme",
+  "bugs": {
+    "url": "https://github.com/ranjan-mohanty/agent-ready/issues"
+  },
   "type": "module",
   "bin": {
     "agent-ready": "dist/bin.js"
