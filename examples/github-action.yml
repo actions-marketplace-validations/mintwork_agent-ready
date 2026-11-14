@@ -1,0 +1,17 @@
+# .github/workflows/agent-ready.yml — fail PRs that make the repo harder for AI agents to work in.
+name: agent-ready
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  agent-ready:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npx --yes agent-ready@latest . --min-score 75

@@ -1,0 +1,38 @@
+name: agent-ready
+description: Score how well AI coding agents can work in your repo and fail CI below a threshold.
+branding:
+  icon: cpu
+  color: green
+inputs:
+  path:
+    description: Directory to scan
+    default: "."
+  min-score:
+    description: Fail if the score is below this (0-100)
+    default: "0"
+  version:
+    description: agent-ready version to run
+    default: latest
+outputs:
+  score:
+    description: The agent-ready score (0-100)
+    value: ${{ steps.scan.outputs.score }}
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        AR_PATH: ${{ inputs.path }}
+        AR_MIN: ${{ inputs.min-score }}
+        AR_VERSION: ${{ inputs.version }}
+      run: |
+        npx --yes "agent-ready@${AR_VERSION}" "$AR_PATH" --json > "$RUNNER_TEMP/agent-ready.json"
+        npx --yes "agent-ready@${AR_VERSION}" "$AR_PATH"
+        SCORE=$(node -e 'console.log(require(process.argv[1]).score)' "$RUNNER_TEMP/agent-ready.json")
+        echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+        echo "### agent-ready: $SCORE/100" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$SCORE" -lt "$AR_MIN" ]; then
+          echo "::error::agent-ready score $SCORE is below $AR_MIN"
+          exit 1
+        fi
