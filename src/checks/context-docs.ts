@@ -175,38 +175,55 @@ export function extractScriptRefs(md: string): string[] {
 /** Build-output directory names: a doc may legitimately mention them before anything is built. */
 const OUTPUT_SEGMENTS = new Set(['node_modules', 'dist', '.next', 'target', 'coverage', '.venv']);
 
-type RefStatus = 'ok' | 'missing' | 'skip';
+interface PathIndex {
+  /** Every directory (repo-relative). */
+  dirs: Set<string>;
+  /** Every segment-aligned suffix of every file and directory path: `a/b/c.ts` -> `b/c.ts`, `c.ts`. */
+  suffixes: Set<string>;
+}
 
-function dirsOf(ctx: RepoContext): Set<string> {
+function buildIndex(ctx: RepoContext): PathIndex {
   const dirs = new Set<string>();
+  const suffixes = new Set<string>();
+  const addSuffixes = (p: string) => {
+    let i = -1;
+    do {
+      suffixes.add(p.slice(i + 1));
+      i = p.indexOf('/', i + 1);
+    } while (i !== -1);
+  };
   for (const f of ctx.files) {
+    addSuffixes(f);
     let i = f.indexOf('/');
     while (i !== -1) {
-      dirs.add(f.slice(0, i));
+      const d = f.slice(0, i);
+      if (!dirs.has(d)) {
+        dirs.add(d);
+        addSuffixes(d);
+      }
       i = f.indexOf('/', i + 1);
     }
   }
-  return dirs;
+  return { dirs, suffixes };
 }
 
-function refStatus(
+/** `ok`/`skip`, or a missing ref whose `candidates` still need a (batched) .gitignore check. */
+type PreStatus = 'ok' | 'skip' | { candidates: string[] };
+
+function preStatus(
   ctx: RepoContext,
   docPath: string,
   ref: string,
-  dirs: () => Set<string>,
-): RefStatus {
+  idx: () => PathIndex,
+): PreStatus {
   const clean = ref.replace(/\/$/, '');
-  if (ctx.exists(clean)) return 'ok';
   const rel = posix.normalize(posix.join(dirname(docPath), clean));
-  if (!rel.startsWith('..') && ctx.exists(rel)) return 'ok';
-  // Monorepo docs often use package-relative paths (`src/cli/main.ts` for `packages/x/src/cli/main.ts`).
-  const suffix = `/${clean}`;
-  if (ctx.files.some((f) => f === clean || f.endsWith(suffix))) return 'ok';
-  if (dirs().has(clean)) return 'ok';
-  for (const d of dirs()) if (d.endsWith(suffix)) return 'ok';
+  const inRepo = !rel.startsWith('..');
+  // Monorepo docs often use package-relative paths (`src/cli/main.ts` for `packages/x/src/...`).
+  if (idx().suffixes.has(clean) || (inRepo && idx().suffixes.has(rel))) return 'ok';
+  if (ctx.exists(clean) || (inRepo && ctx.exists(rel))) return 'ok';
   // Paths the docs expect to be created by a build or local run.
   if (clean.split('/').some((seg) => OUTPUT_SEGMENTS.has(seg))) return 'skip';
-  if (ctx.isIgnored(clean) || (!rel.startsWith('..') && ctx.isIgnored(rel))) return 'skip';
   // Only anchored references count as stale: `a/b/c.ts` where `a/` is a real directory at the root
   // or next to the doc. Unanchored `a/b` is far more likely an import specifier (`next/font`),
   // `owner/repo` or a model id. A bare data file (`manifest.json`) is usually a runtime artifact;
@@ -214,7 +231,8 @@ function refStatus(
   const docDir = dirname(docPath);
   if (clean.includes('/')) {
     const first = clean.split('/')[0] ?? '';
-    const anchored = dirs().has(first) || (docDir !== '.' && dirs().has(posix.join(docDir, first)));
+    const anchored =
+      idx().dirs.has(first) || (docDir !== '.' && idx().dirs.has(posix.join(docDir, first)));
     if (!anchored) return 'skip';
   } else if (
     ref.endsWith('/') ||
@@ -222,7 +240,7 @@ function refStatus(
   ) {
     return 'skip';
   }
-  return 'missing';
+  return { candidates: inRepo && rel !== clean ? [clean, rel] : [clean] };
 }
 
 /** The doc an append-fix should target: AGENTS.md first, then CLAUDE.md, then any root markdown doc. */
@@ -384,27 +402,22 @@ export const contextChecks: Check[] = [
       const findings: Finding[] = [];
       let total = 0;
       const scripts = ctx.scripts();
-      let dirCache: Set<string> | null = null;
-      const dirs = () => {
-        dirCache ??= dirsOf(ctx);
-        return dirCache;
+      let index: PathIndex | null = null;
+      const idx = () => {
+        index ??= buildIndex(ctx);
+        return index;
       };
       // CLAUDE.md is often a symlink or copy of AGENTS.md; don't report the same stale line twice.
       const seenContent = new Set<string>();
+      const pending: Array<{ doc: string; ref: string; candidates: string[] }> = [];
       for (const d of docs) {
         if (seenContent.has(d.content)) continue;
         seenContent.add(d.content);
         for (const ref of extractPathRefs(d.content)) {
-          const status = refStatus(ctx, d.path, ref, dirs);
+          const status = preStatus(ctx, d.path, ref, idx);
           if (status === 'skip') continue;
           total++;
-          if (status === 'missing') {
-            findings.push({
-              severity: 'warn',
-              file: d.path,
-              message: `references missing path \`${ref}\``,
-            });
-          }
+          if (status !== 'ok') pending.push({ doc: d.path, ref, candidates: status.candidates });
         }
         if (ctx.pkg) {
           const deps = ctx.allDeps();
@@ -422,6 +435,21 @@ export const contextChecks: Check[] = [
           }
         }
       }
+      // Gitignored paths (local output, caches) appear after a build or run: not stale.
+      const ignored = ctx.isIgnoredMany(pending.flatMap((p) => p.candidates));
+      const stale: Finding[] = [];
+      for (const p of pending) {
+        if (p.candidates.some((c) => ignored.get(c))) {
+          total--;
+          continue;
+        }
+        stale.push({
+          severity: 'warn',
+          file: p.doc,
+          message: `references missing path \`${p.ref}\``,
+        });
+      }
+      findings.unshift(...stale);
       const score = Math.max(0, 1 - 0.2 * findings.length);
       return {
         score,

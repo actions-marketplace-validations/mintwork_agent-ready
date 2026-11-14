@@ -113,7 +113,9 @@ export function projectTsconfigs(ctx: RepoContext): string[] {
   return (real.length ? real : all).slice(0, MAX_TSCONFIGS);
 }
 
-function tsCheck(ctx: RepoContext): { score: number; summary: string; findings: Finding[] } {
+async function tsCheck(
+  ctx: RepoContext,
+): Promise<{ score: number; summary: string; findings: Finding[] }> {
   const findings: Finding[] = [];
   const tsconfigs = projectTsconfigs(ctx);
   let base: number;
@@ -167,16 +169,25 @@ function tsCheck(ctx: RepoContext): { score: number; summary: string; findings: 
   let nocheck = 0;
   let ignores = 0;
   let anys = 0;
-  for (const f of tsFiles.slice(0, 3000)) {
-    const text = ctx.read(f);
-    if (!text) continue;
-    if (/^\s*(?:\/\/|\/\*+)\s*@ts-nocheck/m.test(text)) {
+  const counts = await ctx.mapFiles(tsFiles.slice(0, 3000), (f, text) => ({
+    f,
+    nocheck: /^\s*(?:\/\/|\/\*+)\s*@ts-nocheck/m.test(text),
+    ignores: (text.match(/(?:\/\/|\/\*+)\s*@ts-ignore/g) ?? []).length,
+    anys: (text.match(/:\s*any\b|as any\b|<any>/g) ?? []).length,
+  }));
+  for (const c of counts) {
+    if (!c) continue;
+    if (c.nocheck) {
       nocheck++;
       if (nocheck <= 5)
-        findings.push({ severity: 'warn', file: f, message: '@ts-nocheck disables type checking' });
+        findings.push({
+          severity: 'warn',
+          file: c.f,
+          message: '@ts-nocheck disables type checking',
+        });
     }
-    ignores += (text.match(/(?:\/\/|\/\*+)\s*@ts-ignore/g) ?? []).length;
-    anys += (text.match(/:\s*any\b|as any\b|<any>/g) ?? []).length;
+    ignores += c.ignores;
+    anys += c.anys;
   }
   const n = Math.max(1, tsFiles.length);
   const escapeRate = (nocheck * 5 + ignores + anys * 0.5) / n;
@@ -298,7 +309,7 @@ export const typeSafetyChecks: Check[] = [
     category: 'types',
     title: 'TypeScript strictness',
     weight: 1,
-    run(ctx): CheckResult {
+    async run(ctx): Promise<CheckResult> {
       if (!ctx.languages.includes('typescript')) {
         if (
           ctx.languages.includes('javascript') &&
@@ -318,7 +329,7 @@ export const typeSafetyChecks: Check[] = [
         }
         return { score: null, summary: 'No TypeScript/JavaScript' };
       }
-      const r = tsCheck(ctx);
+      const r = await tsCheck(ctx);
       const strictOn = r.summary.startsWith('strict mode on (');
       return {
         ...r,

@@ -80,6 +80,9 @@ export interface Report {
   checks: CheckOutcome[];
   languages: string[];
   fileCount: number;
+  /** True when the repo had more files than agent-ready scans; results cover a subset. */
+  truncated: boolean;
+  /** Wall time for the whole scan, including listing files. */
   durationMs: number;
 }
 

@@ -72,7 +72,8 @@ describe('secrets: test fixtures and example values', () => {
     const s = check(r, 'safety.secrets');
     expect(s.score).toBe(1);
     expect(s.findings?.every((f) => f.severity === 'info')).toBe(true);
-    expect(s.summary).toMatch(/4 test\/example value/);
+    // files under tests/ are not content-scanned at all; the two in src/ are reported as info
+    expect(s.summary).toMatch(/2 test\/example value/);
   });
 
   it('still flags a real-looking key in product code', async () => {
@@ -440,5 +441,28 @@ describe('Go and Rust repos (previously n/a or mis-detected)', () => {
     const py = check(r, 'types.python');
     expect(js.weight).toBeLessThan(py.weight);
     expect(r.categories.find((c) => c.id === 'types')?.score).toBeGreaterThan(70);
+  });
+});
+
+describe('scan I/O', () => {
+  it('mapFiles keeps input order and maps missing/binary/oversized files to null', async () => {
+    const { createContext } = await import('../src/context.js');
+    const dir = fixture(null, {
+      git: true,
+      files: { 'a.txt': 'alpha', 'b.bin': 'x\0y', 'c.txt': 'gamma', 'big.txt': 'z'.repeat(2000) },
+    });
+    const ctx = createContext(dir);
+    const out = await ctx.mapFiles(
+      ['c.txt', 'missing.txt', 'b.bin', 'a.txt', 'big.txt'],
+      (f, t) => `${f}:${t.length}`,
+      1000,
+    );
+    expect(out).toEqual(['c.txt:5', null, null, 'a.txt:5', null]);
+  });
+
+  it('reports truncation and includes file listing in the duration', async () => {
+    const r = await scan(fixture('good-ts', { git: true }));
+    expect(r.truncated).toBe(false);
+    expect(r.durationMs).toBeGreaterThanOrEqual(0);
   });
 });

@@ -59,6 +59,8 @@ export async function scanContext(ctx: RepoContext, opts: ScanOptions = {}): Pro
     runTimeoutMs: opts.runTimeoutMs ?? 300_000,
   };
   const outcomes: CheckOutcome[] = [];
+  // One concurrent stat pass is much faster than thousands of sync stats spread across checks.
+  await ctx.prefetchSizes();
   for (const check of enabledChecks(ctx, opts.checks ?? builtinChecks)) {
     const t0 = Date.now();
     let result: Awaited<ReturnType<Check['run']>>;
@@ -89,7 +91,8 @@ export async function scanContext(ctx: RepoContext, opts: ScanOptions = {}): Pro
     checks: outcomes,
     languages: ctx.languages,
     fileCount: ctx.files.length,
-    durationMs: Date.now() - start,
+    truncated: ctx.truncated,
+    durationMs: Date.now() - start + ctx.setupMs,
   };
 }
 

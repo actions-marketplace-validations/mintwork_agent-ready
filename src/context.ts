@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { UserConfig } from './types.js';
 import { Matcher, parseIgnoreFile } from './util/glob.js';
@@ -25,7 +26,7 @@ export const HEAVY_DIRS = [
   '.gradle',
 ] as const;
 
-const MAX_FILES = 50_000;
+const MAX_FILES = 200_000;
 
 export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust';
 
@@ -52,6 +53,8 @@ export interface RepoContext {
   /** Tracked files that live inside dependency/cache dirs (should never be committed). */
   trackedHeavy: string[];
   truncated: boolean;
+  /** Milliseconds spent building this context (listing files, reading manifests). */
+  setupMs: number;
   languages: Language[];
   /** Number of (non-fixture, non-vendored) code files per detected language. */
   codeFiles: Partial<Record<Language, number>>;
@@ -74,12 +77,41 @@ export interface RepoContext {
   lineCount(rel: string): number;
   /** Whether a path is ignored by git (or the .gitignore matcher when not a git repo). */
   isIgnored(rel: string): boolean;
+  /** Batch version of `isIgnored` (one git call); results are cached for later `isIgnored` calls. */
+  isIgnoredMany(rels: string[]): Map<string, boolean>;
   /** Whether git tracks at least one file under this directory. */
   hasTracked(relDir: string): boolean;
   /** Visible files with one of the given extensions. */
   filesWithExt(...exts: string[]): string[];
   scripts(): Record<string, string>;
   allDeps(): Record<string, string>;
+  /** Stat every visible file concurrently so later `size()` calls are cache hits. */
+  prefetchSizes(): Promise<void>;
+  /**
+   * Read many files concurrently (without caching their text) and map each to a small result.
+   * Files that are missing, larger than `maxBytes` or binary map to `null`. Results keep input order.
+   */
+  mapFiles<T>(
+    paths: string[],
+    fn: (rel: string, text: string) => T,
+    maxBytes?: number,
+  ): Promise<Array<T | null>>;
+}
+
+const IO_CONCURRENCY = 32;
+
+async function pool<T>(
+  items: T[],
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const run = async () => {
+    while (next < items.length) {
+      const i = next++;
+      await worker(items[i] as T, i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(IO_CONCURRENCY, items.length) }, run));
 }
 
 function git(root: string, args: string[], input?: string): string | null {
@@ -152,6 +184,7 @@ export function loadConfig(root: string, pkg: PackageJson | null): UserConfig {
 }
 
 export function createContext(rootInput: string): RepoContext {
+  const t0 = Date.now();
   const root = resolve(rootInput);
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new Error(`Not a directory: ${root}`);
@@ -260,6 +293,20 @@ export function createContext(rootInput: string): RepoContext {
     return ignored;
   };
 
+  const isIgnoredMany = (rels: string[]): Map<string, boolean> => {
+    const todo = [...new Set(rels)].filter((r) => !ignoredCache.has(r) && !r.includes('\n'));
+    if (todo.length && isGit) {
+      const out = git(
+        root,
+        ['check-ignore', '--no-index', '--stdin'],
+        `${todo.flatMap((r) => [r, `${r}/x`]).join('\n')}\n`,
+      );
+      const hit = new Set((out ?? '').split('\n').filter(Boolean));
+      for (const r of todo) ignoredCache.set(r, hit.has(r) || hit.has(`${r}/x`));
+    }
+    return new Map(rels.map((r) => [r, isIgnored(r)]));
+  };
+
   const hasTracked = (relDir: string): boolean => {
     const prefix = `${relDir.replace(/\/$/, '')}/`;
     for (const f of tracked) if (f.startsWith(prefix)) return true;
@@ -326,6 +373,7 @@ export function createContext(rootInput: string): RepoContext {
     files,
     trackedHeavy,
     truncated,
+    setupMs: Date.now() - t0,
     languages,
     codeFiles,
     share,
@@ -343,8 +391,55 @@ export function createContext(rootInput: string): RepoContext {
     size,
     lineCount,
     isIgnored,
+    isIgnoredMany,
     hasTracked,
     filesWithExt,
+    async prefetchSizes() {
+      const todo = files.filter((f) => !statCache.has(f));
+      await pool(todo, async (f) => {
+        try {
+          const fh = await open(join(root, f), 'r');
+          try {
+            statCache.set(f, (await fh.stat()).size);
+          } finally {
+            await fh.close();
+          }
+        } catch {
+          statCache.set(f, -1);
+        }
+      });
+    },
+    async mapFiles<T>(
+      paths: string[],
+      fn: (rel: string, text: string) => T,
+      maxBytes = 512 * 1024,
+    ): Promise<Array<T | null>> {
+      const out: Array<T | null> = new Array(paths.length).fill(null);
+      await pool(paths, async (f, i) => {
+        const cachedText = readCache.get(f);
+        if (cachedText !== undefined) {
+          if (cachedText !== null && !cachedText.includes('\0')) out[i] = fn(f, cachedText);
+          return;
+        }
+        const known = statCache.get(f);
+        if (known !== undefined && (known <= 0 || known > maxBytes)) return;
+        let text: string | null = null;
+        try {
+          const fh = await open(join(root, f), 'r');
+          try {
+            const sz = known ?? (await fh.stat()).size;
+            statCache.set(f, sz);
+            if (sz > 0 && sz <= maxBytes) text = (await fh.readFile()).toString('utf8');
+          } finally {
+            await fh.close();
+          }
+        } catch {
+          text = null;
+        }
+        if (text !== null && !text.includes('\0')) out[i] = fn(f, text);
+      });
+      return out;
+    },
     scripts: () => pkg?.scripts ?? {},
     allDeps: () => ({ ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) }),
   };

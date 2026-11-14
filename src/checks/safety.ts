@@ -117,8 +117,9 @@ function matchSecret(text: string): { rule: SecretRule; index: number; line: str
   return null;
 }
 
-export function scanSecrets(ctx: RepoContext): Finding[] {
+export async function scanSecrets(ctx: RepoContext): Promise<Finding[]> {
   const findings: Finding[] = [];
+  const toScan: string[] = [];
   for (const f of ctx.files) {
     const fileRule = SECRET_FILES.find((r) => r.re.test(f));
     // Nested .env files under examples/ or tests are usually templates; judge them by content.
@@ -140,27 +141,29 @@ export function scanSecrets(ctx: RepoContext): Finding[] {
       });
       continue;
     }
+    // Content hits in tests/fixtures would only ever be `info`; skipping them keeps big repos fast.
+    if (isTestPath(f)) continue;
     if (
       BINARY_EXT.test(f) ||
       /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|uv\.lock)$/.test(f)
     )
       continue;
-    const sz = ctx.size(f);
-    if (sz <= 0 || sz > 512 * 1024) continue;
-    const text = ctx.read(f);
-    if (!text || text.includes('\0')) continue;
+    toScan.push(f);
+  }
+  const hits = await ctx.mapFiles(toScan, (f, text): Finding | null => {
     // Cheap prefilter: every rule needs one of these literals.
-    if (!SECRET_HINT.test(text)) continue;
+    if (!SECRET_HINT.test(text)) return null;
     const hit = matchSecret(text);
-    if (!hit) continue;
-    const line = text.slice(0, hit.index).split('\n').length;
-    findings.push({
+    if (!hit) return null;
+    const fileRule = SECRET_FILES.find((r) => r.re.test(f));
+    return {
       severity: testish(f, text, hit.index) ? 'info' : 'error',
       file: f,
-      line,
+      line: text.slice(0, hit.index).split('\n').length,
       message: fileRule ? `${fileRule.name} contains a private key` : `possible ${hit.rule.name}`,
-    });
-  }
+    };
+  });
+  for (const h of hits) if (h) findings.push(h);
   return findings;
 }
 
@@ -280,8 +283,8 @@ export const safetyChecks: Check[] = [
     category: 'safety',
     title: 'No secrets in the repo',
     weight: 3,
-    run(ctx): CheckResult {
-      const all = scanSecrets(ctx);
+    async run(ctx): Promise<CheckResult> {
+      const all = await scanSecrets(ctx);
       const findings = all.filter((f) => f.severity !== 'info');
       const dummies = all.length - findings.length;
       const errors = findings.filter((f) => f.severity === 'error').length;

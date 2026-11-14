@@ -32,6 +32,11 @@ export function renderTerminal(report: Report, colors: Colors, opts: TerminalOpt
   out.push(
     `  ${c('gray', `${report.fileCount} files · ${report.languages.join(', ') || 'unknown stack'} · ${report.durationMs}ms`)}`,
   );
+  if (report.truncated) {
+    out.push(
+      `  ${c('yellow', `! Repo has more than ${report.fileCount} files; only the first ${report.fileCount} were scanned.`)}`,
+    );
+  }
   out.push('');
   const sc = scoreColor(report.score);
   out.push(
