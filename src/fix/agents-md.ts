@@ -29,8 +29,27 @@ const DIR_HINTS: Record<string, string> = {
   utils: 'Shared utilities',
   types: 'Shared type definitions',
   fixtures: 'Test fixtures',
+  docs_src: 'Code samples used by the docs',
+  benches: 'Benchmarks',
+  benchmarks: 'Benchmarks',
+  fuzz: 'Fuzz targets',
+  ci: 'CI scripts',
+  tools: 'Developer tooling',
   '.github': 'CI workflows and GitHub config',
 };
+
+/** Hints that only hold for one language's conventions. */
+const LANG_DIR_HINTS: Partial<Record<string, Record<string, string>>> = {
+  go: {
+    cmd: 'Command (main package) entry points',
+    pkg: 'Library packages',
+    internal: 'Internal packages',
+  },
+  rust: { crates: 'Workspace crates' },
+};
+
+/** Directories whose children are the real units (`crates/`, `packages/`, `apps/`). */
+const CONTAINER_DIRS = new Set(['crates', 'packages', 'apps', 'libs', 'services', 'plugins']);
 
 function pyHas(ctx: RepoContext, section: string): boolean {
   return ctx.pyproject?.includes(`[${section}`) ?? false;
@@ -67,6 +86,11 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
       cmds.push({ label: 'Typecheck', cmd: 'npx tsc --noEmit' });
     }
   }
+  const makefile = ctx.read('Makefile') ?? '';
+  const makeTarget = (t: string) => new RegExp(`^${t}\\s*:`, 'm').test(makefile);
+  // Project scripts encode the real invocation (env vars, paths); prefer them over generic guesses.
+  const projectScript = (name: string) =>
+    ['scripts', 'script', 'bin'].map((d) => `${d}/${name}.sh`).find((f) => ctx.has(f));
   if (ctx.languages.includes('python')) {
     const uv = ctx.has('uv.lock');
     const poetry = ctx.has('poetry.lock') || pyHas(ctx, 'tool.poetry');
@@ -79,21 +103,33 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
     const hasPyTests =
       ctx.files.some((f) => /(^|\/)(test_[^/]*|[^/]*_test)\.py$/.test(f)) ||
       pyHas(ctx, 'tool.pytest');
-    if (hasPyTests) cmds.push({ label: 'Run tests', cmd: `${run}pytest` });
-    if (pyHas(ctx, 'tool.ruff') || ctx.has('ruff.toml') || ctx.has('.ruff.toml')) {
+    const testSh = projectScript('test');
+    const lintSh = projectScript('lint');
+    if (makeTarget('test')) cmds.push({ label: 'Run tests', cmd: 'make test' });
+    else if (testSh) cmds.push({ label: 'Run tests', cmd: `${run}bash ${testSh}` });
+    else if (hasPyTests) cmds.push({ label: 'Run tests', cmd: `${run}pytest` });
+    if (makeTarget('lint')) cmds.push({ label: 'Lint', cmd: 'make lint' });
+    else if (lintSh) cmds.push({ label: 'Lint', cmd: `${run}bash ${lintSh}` });
+    else if (pyHas(ctx, 'tool.ruff') || ctx.has('ruff.toml') || ctx.has('.ruff.toml')) {
       cmds.push({ label: 'Lint', cmd: `${run}ruff check .` });
     } else if (ctx.has('.flake8')) {
       cmds.push({ label: 'Lint', cmd: `${run}flake8` });
     }
-    if (pyHas(ctx, 'tool.mypy') || ctx.has('mypy.ini'))
-      cmds.push({ label: 'Typecheck', cmd: `${run}mypy .` });
+    const pkgDir = pythonPackageDir(ctx);
+    if (makeTarget('typecheck')) cmds.push({ label: 'Typecheck', cmd: 'make typecheck' });
+    else if (lintSh && /\b(mypy|pyright)\b/.test(ctx.read(lintSh) ?? '')) {
+      // already part of the project's lint script
+    } else if (pyHas(ctx, 'tool.mypy') || ctx.has('mypy.ini'))
+      cmds.push({ label: 'Typecheck', cmd: `${run}mypy ${pkgDir ?? '.'}` });
     else if (pyHas(ctx, 'tool.pyright') || ctx.has('pyrightconfig.json'))
       cmds.push({ label: 'Typecheck', cmd: `${run}pyright` });
   }
   if (ctx.languages.includes('rust') && ctx.has('Cargo.toml')) {
-    cmds.push({ label: 'Build (Rust)', cmd: 'cargo build' });
-    cmds.push({ label: 'Run tests (Rust)', cmd: 'cargo test' });
-    cmds.push({ label: 'Lint (Rust)', cmd: 'cargo clippy --all-targets' });
+    // In a workspace, plain `cargo test` at the root only covers the root package (if any).
+    const ws = /^\[workspace\]/m.test(ctx.read('Cargo.toml') ?? '') ? ' --workspace' : '';
+    cmds.push({ label: 'Build (Rust)', cmd: `cargo build${ws}` });
+    cmds.push({ label: 'Run tests (Rust)', cmd: `cargo test${ws}` });
+    cmds.push({ label: 'Lint (Rust)', cmd: `cargo clippy${ws} --all-targets` });
     cmds.push({ label: 'Format (Rust)', cmd: 'cargo fmt' });
   }
   if (ctx.languages.includes('go') && ctx.has('go.mod')) {
@@ -107,7 +143,6 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
         : { label: 'Vet (Go)', cmd: 'go vet ./...' },
     );
   }
-  const makefile = ctx.read('Makefile');
   if (makefile && cmds.length <= 1) {
     for (const target of ['build', 'test', 'lint', 'check']) {
       if (new RegExp(`^${target}:`, 'm').test(makefile))
@@ -121,6 +156,14 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
     seen.add(c.cmd);
     return true;
   });
+}
+
+/** The top-level directory holding the Python package (`fastapi/`, `src/pkg/`), if obvious. */
+function pythonPackageDir(ctx: RepoContext): string | null {
+  const name = ctx.pyproject?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+  if (!name) return null;
+  const mod = name.toLowerCase().replace(/[-.]/g, '_');
+  return [mod, `src/${mod}`].find((d) => ctx.has(`${d}/__init__.py`)) ?? null;
 }
 
 function projectName(ctx: RepoContext): string {
@@ -150,6 +193,17 @@ export function commandsSection(ctx: RepoContext): string[] {
   return lines;
 }
 
+function dirHint(ctx: RepoContext, d: string): string | null {
+  for (const lang of ctx.languages) {
+    const hint = LANG_DIR_HINTS[lang]?.[d];
+    if (hint) return hint;
+  }
+  if (DIR_HINTS[d]) return DIR_HINTS[d] as string;
+  if (d === pythonPackageDir(ctx) || (ctx.pkg?.name && d === ctx.pkg.name))
+    return 'Main package source';
+  return null;
+}
+
 export function architectureSection(ctx: RepoContext): string[] {
   const topDirs = [
     ...new Set(ctx.files.filter((f) => f.includes('/')).map((f) => f.split('/')[0] as string)),
@@ -158,7 +212,27 @@ export function architectureSection(ctx: RepoContext): string[] {
     .sort();
   const lines = ['## Architecture', ''];
   if (topDirs.length) {
-    for (const d of topDirs) lines.push(`- \`${d}/\` — ${DIR_HINTS[d] ?? 'TODO: describe'}`);
+    for (const d of topDirs) {
+      let hint = dirHint(ctx, d);
+      if (CONTAINER_DIRS.has(d)) {
+        const children = [
+          ...new Set(
+            ctx.files
+              .filter((f) => f.startsWith(`${d}/`) && f.split('/').length > 2)
+              .map((f) => f.split('/')[1] as string),
+          ),
+        ].sort();
+        if (children.length) {
+          const shown = children
+            .slice(0, 12)
+            .map((c) => `\`${c}\``)
+            .join(', ');
+          const more = children.length > 12 ? `, … (${children.length} total)` : '';
+          hint = `${hint ?? DIR_HINTS[d] ?? 'Workspace members'}: ${shown}${more}`;
+        }
+      }
+      lines.push(`- \`${d}/\` — ${hint ?? 'TODO: describe'}`);
+    }
     lines.push('');
   } else {
     lines.push('<!-- TODO: describe the main modules and how they fit together. -->', '');

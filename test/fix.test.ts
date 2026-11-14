@@ -90,3 +90,72 @@ describe('generated docs safety', () => {
     expect(md).not.toContain('npm run clean');
   });
 });
+
+describe('--fix output for real-world layouts', () => {
+  it("prefers a Python project's own scripts and points mypy at the package", () => {
+    const dir = fixture(null, {
+      git: true,
+      files: {
+        'pyproject.toml': '[project]\nname = "web-kit"\n[tool.mypy]\nstrict = true\n[tool.ruff]\n',
+        'uv.lock': '',
+        'web_kit/__init__.py': '',
+        'tests/test_app.py': 'def test_a() -> None: ...\n',
+        'scripts/test.sh': '#!/usr/bin/env bash\nexport PYTHONPATH=./docs_src\npytest tests\n',
+      },
+    });
+    const md = generateAgentsMd(createContext(dir));
+    expect(md).toContain('uv run bash scripts/test.sh');
+    expect(md).not.toMatch(/uv run pytest/);
+    expect(md).toContain('uv run mypy web_kit');
+    expect(md).toContain('`web_kit/` — Main package source');
+  });
+
+  it('uses Makefile test/lint targets when they exist', () => {
+    const dir = fixture(null, {
+      git: true,
+      files: {
+        'pyproject.toml': '[project]\nname = "x"\n[tool.ruff]\n',
+        Makefile: 'test:\n\tpytest\nlint:\n\truff check .\n',
+        'tests/test_x.py': '',
+      },
+    });
+    const md = generateAgentsMd(createContext(dir));
+    expect(md).toContain('make test');
+    expect(md).toContain('make lint');
+    expect(md).not.toContain('ruff check .  #');
+  });
+
+  it('lists workspace crates and uses --workspace for Cargo workspaces', () => {
+    const dir = fixture(null, {
+      git: true,
+      files: {
+        'Cargo.toml': '[package]\nname = "tool"\n\n[workspace]\nmembers = ["crates/*"]\n',
+        'src/main.rs': 'fn main() {}\n',
+        'crates/core/src/lib.rs': '',
+        'crates/cli/src/lib.rs': '',
+        'pkg/brew/tool.rb': '',
+      },
+    });
+    const md = generateAgentsMd(createContext(dir));
+    expect(md).toContain('cargo test --workspace');
+    expect(md).toContain('`crates/` — Workspace crates: `cli`, `core`');
+    // `pkg/` only means "Go library packages" in Go repos
+    expect(md).toContain('`pkg/` — TODO: describe');
+  });
+
+  it('describes Go layout dirs in Go repos', () => {
+    const dir = fixture(null, {
+      git: true,
+      files: {
+        'go.mod': 'module example.com/x\n',
+        'cmd/x/main.go': 'package main\n',
+        'pkg/api/api.go': 'package api\n',
+        'pkg/api/api_test.go': 'package api\n',
+      },
+    });
+    const md = generateAgentsMd(createContext(dir));
+    expect(md).toContain('go test ./...');
+    expect(md).toContain('`pkg/` — Library packages');
+    expect(md).toContain('Languages: Go.');
+  });
+});
