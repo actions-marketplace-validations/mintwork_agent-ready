@@ -10,6 +10,8 @@ Score how well Claude Code, Codex and Cursor can work in your repo — then auto
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![zero dependencies](https://img.shields.io/badge/runtime_deps-0-brightgreen)](package.json)
 
+<img src="docs/demo.gif" alt="agent-ready scoring a repo at 59/100, running --fix to reach 78/100, then printing a README badge" width="900">
+
 ```bash
 npx agent-ready
 ```
@@ -166,12 +168,15 @@ jobs:
 ```
 
 A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`;
-output `score`, plus a job summary):
+output `score`, plus a job summary with your badge):
 
 ```yaml
-- uses: ranjan-mohanty/agent-ready@main
+- uses: ranjan-mohanty/agent-ready@v0
   with: { min-score: 75 }
 ```
+
+`@v0` tracks the latest 0.x release; pin `@v0.1.0` for a fixed version. The action runs the
+agent-ready release matching the tag you use, unless you override it with `version`.
 
 See [`examples/github-action.yml`](examples/github-action.yml).
 

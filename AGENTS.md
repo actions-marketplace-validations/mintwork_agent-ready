@@ -13,6 +13,7 @@ npm run lint         # biome check .
 npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + lint + test; run before finishing any task
 node dist/bin.js .   # run the CLI against this repo (build first)
+npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 ```
 
 ## Architecture
@@ -28,6 +29,9 @@ node dist/bin.js .   # run the CLI against this repo (build first)
 - `src/report/` — terminal renderer and shields.io badge.
 - `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
   path classifiers (`paths.ts`: test/fixture/example paths).
+- `scripts/demo-gif.mjs` — renders the real CLI output on a synthetic temp repo into `docs/demo.gif`
+  (Playwright + Chrome, ffmpeg). Never point it at real repos.
+- `docs/` — demo visuals, release notes and launch drafts.
 - `examples/` — copy-paste CI workflow; `action.yml` at the root is the reusable GitHub Action.
 - `test/` — vitest suites; `test/fixtures/` holds good/bad sample repos (excluded from our own scan
   via `agent-ready.config.json`).
