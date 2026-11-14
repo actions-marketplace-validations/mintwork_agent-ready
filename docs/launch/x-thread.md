@@ -8,7 +8,7 @@ Attach `docs/demo.gif` (or an MP4 export of it, since X recompresses GIFs) to po
 **1/**
 Lighthouse, but for AI coding agents.
 
-`npx agent-ready` scores how well Claude Code, Codex and Cursor can work in your repo, 0–100, in
+`npx @mintwork/agent-ready` scores how well Claude Code, Codex and Cursor can work in your repo, 0–100, in
 under a second. Then `--fix` closes the easy gaps.
 
 Open source, zero deps.
@@ -52,7 +52,7 @@ Every false positive became a regression test.
 **6/**
 The fun part:
 
-`npx agent-ready --badge`
+`npx @mintwork/agent-ready --badge`
 
 drops an agent-ready: NN/100 badge in your README, so contributors (human and AI) know the repo is
 ready for them.
@@ -65,4 +65,4 @@ plain objects you can extend.
 
 GitHub Action included for CI gating.
 
-https://github.com/ranjan-mohanty/agent-ready
+https://github.com/mintwork/agent-ready

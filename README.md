@@ -5,18 +5,18 @@
 **Lighthouse for AI coding agents.**
 Score how well Claude Code, Codex and Cursor can work in your repo — then auto-fix the gaps.
 
-[![agent-ready: 100/100](https://img.shields.io/badge/agent--ready-100%2F100-brightgreen)](https://github.com/ranjan-mohanty/agent-ready)
-[![CI](https://github.com/ranjan-mohanty/agent-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/ranjan-mohanty/agent-ready/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/agent-ready?color=cb3837&logo=npm)](https://www.npmjs.com/package/agent-ready)
-[![npm downloads](https://img.shields.io/npm/dm/agent-ready?color=cb3837)](https://www.npmjs.com/package/agent-ready)
+[![agent-ready: 100/100](https://img.shields.io/badge/agent--ready-100%2F100-brightgreen)](https://github.com/mintwork/agent-ready)
+[![CI](https://github.com/mintwork/agent-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/mintwork/agent-ready/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@mintwork/agent-ready?color=cb3837&logo=npm)](https://www.npmjs.com/package/@mintwork/agent-ready)
+[![npm downloads](https://img.shields.io/npm/dm/@mintwork/agent-ready?color=cb3837)](https://www.npmjs.com/package/@mintwork/agent-ready)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![zero dependencies](https://img.shields.io/badge/runtime_deps-0-brightgreen)](package.json)
-[![GitHub stars](https://img.shields.io/github/stars/ranjan-mohanty/agent-ready?style=social)](https://github.com/ranjan-mohanty/agent-ready/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/mintwork/agent-ready?style=social)](https://github.com/mintwork/agent-ready/stargazers)
 
 <img src="docs/demo.gif" alt="agent-ready scoring a repo at 59/100, running --fix to reach 78/100, then printing a README badge" width="900">
 
 ```bash
-npx agent-ready
+npx @mintwork/agent-ready
 ```
 
 </div>
@@ -34,7 +34,7 @@ breakdown, and a punch list of fixes — many of which it can apply for you.
 ## What it looks like
 
 ```text
-$ npx agent-ready ~/code/my-app
+$ npx @mintwork/agent-ready ~/code/my-app
 
   agent-ready v0.1.0  ~/code/my-app
   5 files · javascript · 7ms
@@ -76,7 +76,7 @@ $ npx agent-ready ~/code/my-app
 Then:
 
 ```text
-$ npx agent-ready --fix
+$ npx @mintwork/agent-ready --fix
 
 Updated CLAUDE.md — Append detected build/test/lint commands; Append an Architecture section
 Created AGENTS.md — AGENTS.md pointing at the existing CLAUDE.md
@@ -88,11 +88,11 @@ Created .gitignore — Create .gitignore so dependency/build dirs stay out of ag
 ## Show off your score
 
 ```bash
-npx agent-ready --badge
+npx @mintwork/agent-ready --badge
 ```
 
 ```markdown
-[![agent-ready: 94/100](https://img.shields.io/badge/agent--ready-94%2F100-brightgreen)](https://github.com/ranjan-mohanty/agent-ready)
+[![agent-ready: 94/100](https://img.shields.io/badge/agent--ready-94%2F100-brightgreen)](https://github.com/mintwork/agent-ready)
 ```
 
 Paste it at the top of your README. It tells contributors — human and AI — that your repo is
@@ -101,8 +101,8 @@ ready for them. (This repo scores 100/100, and CI fails if it drops below 90.)
 ## Install
 
 ```bash
-npx agent-ready            # no install
-npm i -D agent-ready       # or pin it in your project
+npx @mintwork/agent-ready            # no install
+npm i -D @mintwork/agent-ready       # or pin it in your project
 ```
 
 Node 22+. Zero runtime dependencies. Works on JS/TS and Python repos, with basic Go and Rust support. Read-only unless you pass `--fix`.
@@ -110,7 +110,7 @@ Node 22+. Zero runtime dependencies. Works on JS/TS and Python repos, with basic
 ## Usage
 
 ```text
-npx agent-ready [path] [options]
+npx @mintwork/agent-ready [path] [options]
 
   --json             Machine-readable JSON report
   --badge            Print a shields.io badge (markdown) for your README
@@ -167,14 +167,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with: { node-version: lts/* }
-      - run: npx --yes agent-ready@latest . --min-score 75
+      - run: npx --yes @mintwork/agent-ready@latest . --min-score 75
 ```
 
 A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`;
 output `score`, plus a job summary with your badge):
 
 ```yaml
-- uses: ranjan-mohanty/agent-ready@v0
+- uses: mintwork/agent-ready@v0
   with: { min-score: 75 }
 ```
 
@@ -200,7 +200,7 @@ secret false positive with an `agent-ready-ignore` comment on the same line.
 ## Programmatic API
 
 ```ts
-import { scan, builtinChecks, type Check } from 'agent-ready';
+import { scan, builtinChecks, type Check } from '@mintwork/agent-ready';
 
 const noTodos: Check = {
   id: 'custom.no-todo-md',

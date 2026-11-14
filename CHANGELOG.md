@@ -36,10 +36,10 @@ First public release.
   `disable`; `agent-ready-ignore` comments silence single secret false positives.
 - Language support: JavaScript/TypeScript and Python, with basic Go and Rust. Polyglot repos weight
   per-language checks by each language's share of the code.
-- Composite GitHub Action (`uses: ranjan-mohanty/agent-ready@v0`) with `path`, `min-score` and
+- Composite GitHub Action (`uses: mintwork/agent-ready@v0`) with `path`, `min-score` and
   `version` inputs, a `score` output and a job summary. By default it runs the release matching the
   action tag.
 - Programmatic API: `scan()`, `builtinChecks` and the `Check` type for custom checks.
 - Zero runtime dependencies; Node 22+.
 
-[0.1.0]: https://github.com/ranjan-mohanty/agent-ready/releases/tag/v0.1.0
+[0.1.0]: https://github.com/mintwork/agent-ready/releases/tag/v0.1.0

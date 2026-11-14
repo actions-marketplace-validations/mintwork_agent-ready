@@ -14,4 +14,4 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-      - run: npx --yes agent-ready@latest . --min-score 75
+      - run: npx --yes @mintwork/agent-ready@latest . --min-score 75

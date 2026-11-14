@@ -17,7 +17,7 @@ const HELP = `
 ${NAME} — score how well AI coding agents can work in your repo
 
 Usage
-  npx ${NAME} [path] [options]
+  npx @mintwork/agent-ready [path] [options]
 
 Options
   --json             Machine-readable JSON report

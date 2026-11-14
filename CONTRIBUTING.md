@@ -60,7 +60,7 @@ Re-run it whenever the terminal output changes.
 ## Releasing
 
 Releases are tagged `vX.Y.Z`. The GitHub Action is consumed via the moving major tag
-(`uses: ranjan-mohanty/agent-ready@v0`), and by default it runs the npm version in `package.json`
+(`uses: mintwork/agent-ready@v0`), and by default it runs the npm version in `package.json`
 at that tag. The [release workflow](.github/workflows/release.yml) handles both: publishing a
 GitHub Release publishes to npm (with provenance) **and then** moves `v0`.
 
@@ -78,6 +78,6 @@ Only backwards-compatible releases should move `v0`. For a breaking change to th
 or outputs (or a 1.0), change the major tag in the release workflow to `v1` first.
 
 **npm auth:** the workflow uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
-(configure `ranjan-mohanty/agent-ready` + `release.yml` on the package's npm settings page), or
+(configure `mintwork/agent-ready` + `release.yml` on the package's npm settings page), or
 an `NPM_TOKEN` repository secret as a fallback. If a version is already on npm (for example the
 first release, published by hand), the publish step is skipped.

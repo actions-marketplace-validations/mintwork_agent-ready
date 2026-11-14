@@ -1,5 +1,5 @@
 {
-  "name": "agent-ready",
+  "name": "@mintwork/agent-ready",
   "version": "0.1.0",
   "description": "Lighthouse for AI coding agents. Score how well Claude Code, Codex and Cursor can work in your repo, and auto-fix the gaps.",
   "keywords": [
@@ -17,11 +17,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ranjan-mohanty/agent-ready.git"
+    "url": "git+https://github.com/mintwork/agent-ready.git"
   },
-  "homepage": "https://github.com/ranjan-mohanty/agent-ready#readme",
+  "homepage": "https://github.com/mintwork/agent-ready#readme",
   "bugs": {
-    "url": "https://github.com/ranjan-mohanty/agent-ready/issues"
+    "url": "https://github.com/mintwork/agent-ready/issues"
   },
   "type": "module",
   "bin": {
@@ -64,5 +64,8 @@
     "playwright": "^1.65.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

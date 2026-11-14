@@ -4,9 +4,9 @@
 Copilot can work in your repo (0–100), shows exactly why, and fixes the easy gaps for you.
 
 ```bash
-npx agent-ready          # score this repo
-npx agent-ready --fix    # generate AGENTS.md + CLAUDE.md, fix .gitignore (prints a diff)
-npx agent-ready --badge  # README badge
+npx @mintwork/agent-ready          # score this repo
+npx @mintwork/agent-ready --fix    # generate AGENTS.md + CLAUDE.md, fix .gitignore (prints a diff)
+npx @mintwork/agent-ready --badge  # README badge
 ```
 
 ![agent-ready demo](demo.gif)
@@ -34,7 +34,7 @@ execution (unless you pass `--run`).
   The CLI tells you how many points you unlock by filling in the TODOs, so the badge reflects
   context written by people who know the code.
 - **`--badge`** for your README, **`--json`** for tooling, and **`--min-score`** for CI.
-- **GitHub Action**: `uses: ranjan-mohanty/agent-ready@v0` with a `score` output and a job summary.
+- **GitHub Action**: `uses: mintwork/agent-ready@v0` with a `score` output and a job summary.
 - **Languages**: JS/TS and Python, basic Go and Rust, with polyglot weighting by language share.
 - **Extensible**: plain-object checks via the programmatic API. Zero runtime dependencies.
 
@@ -48,7 +48,7 @@ misfired on a real repo became a regression test, using synthetic snippets.
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: ranjan-mohanty/agent-ready@v0
+- uses: mintwork/agent-ready@v0
   with: { min-score: 75 }
 ```
 

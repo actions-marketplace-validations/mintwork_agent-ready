@@ -23,7 +23,7 @@ model failures:
 So I built **agent-ready**, Lighthouse for AI coding agents:
 
 ```
-npx agent-ready
+npx @mintwork/agent-ready
 ```
 
 It scores your repo 0–100 across context docs, feedback loops, navigability, type safety and
@@ -37,12 +37,12 @@ There are paid "agent readiness" tools. This one is free, MIT, runs locally in u
 and has no runtime dependencies. I validated it against 13 well-known open-source repos, and the
 scores tracked expert judgment of how agent-friendly each one is.
 
-`npx agent-ready --badge` gives you a README badge. I'm curious what scores people get. Post yours
+`npx @mintwork/agent-ready --badge` gives you a README badge. I'm curious what scores people get. Post yours
 below.
 
 [demo GIF]
 
-GitHub: https://github.com/ranjan-mohanty/agent-ready
+GitHub: https://github.com/mintwork/agent-ready
 
 ## r/programming
 
@@ -58,5 +58,5 @@ the README "Why" section, with the tool as the example.
 Author here. The post covers the failure modes I kept seeing: missing or stale agent docs,
 undiscoverable test commands, unignored build output, dangerous scripts. It also explains how I
 turned them into mechanical checks. The tool is open source (MIT, zero runtime deps):
-`npx agent-ready` scores a repo 0–100 and `--fix` generates the missing docs. I calibrated it
+`npx @mintwork/agent-ready` scores a repo 0–100 and `--fix` generates the missing docs. I calibrated it
 against 13 well-known OSS repos. I'd be glad to hear about failure modes it doesn't cover.

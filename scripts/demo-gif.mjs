@@ -231,7 +231,7 @@ function buildTimeline({ scan, fix, badge }) {
   const prompt = () => screen.push(PROMPT);
 
   // 1. Score the repo.
-  type('npx agent-ready');
+  type('npx @mintwork/agent-ready');
   push(250);
   reveal(scan, 2, 30);
   prompt();
@@ -239,7 +239,7 @@ function buildTimeline({ scan, fix, badge }) {
 
   // 2. --fix: diff, score jump, nudge.
   screen = [];
-  type('npx agent-ready --fix');
+  type('npx @mintwork/agent-ready --fix');
   push(200);
   const scoreAt = fix.findIndex((l) => l.includes('Score'));
   reveal(fix.slice(0, 18), 2, 40); // let "Created AGENTS.md" register before it scrolls away
@@ -253,7 +253,7 @@ function buildTimeline({ scan, fix, badge }) {
 
   // 3. --badge, plus how it renders in a README.
   screen = [];
-  type('npx agent-ready --badge');
+  type('npx @mintwork/agent-ready --badge');
   push(200);
   reveal(badge, 1, 300);
   prompt();

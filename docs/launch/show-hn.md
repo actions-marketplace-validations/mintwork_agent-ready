@@ -4,7 +4,7 @@
 
 > Show HN: Agent-ready – Lighthouse for AI coding agents (score your repo 0–100)
 
-**URL:** https://github.com/ranjan-mohanty/agent-ready
+**URL:** https://github.com/mintwork/agent-ready
 
 **First comment** (post right after submitting):
 
@@ -17,7 +17,7 @@ context with minified JS. In one case a `build` script ran `npm publish`.
 
 None of these are model problems. They are repo problems, and you can check for them mechanically.
 
-`npx agent-ready` scans a repo in under a second and gives a 0–100 score across five weighted
+`npx @mintwork/agent-ready` scans a repo in under a second and gives a 0–100 score across five weighted
 categories: context docs, feedback loops (tests/lint/typecheck/CI), navigability, type safety and
 safety (committed secrets, dangerous scripts). Every finding comes with a concrete fix. It's
 read-only, makes no network calls, and doesn't execute your code unless you pass `--run`.
@@ -40,7 +40,7 @@ Every false positive I found became a regression test.
 
 There are paid tools that do "agent readiness" assessments. This one is MIT, has zero runtime
 dependencies, and its checks are plain objects you can extend. It also ships a GitHub Action
-(`--min-score` to fail PRs that make the repo worse) and a README badge, `npx agent-ready --badge`.
+(`--min-score` to fail PRs that make the repo worse) and a README badge, `npx @mintwork/agent-ready --badge`.
 
 Supports JS/TS and Python well, Go and Rust at a basic level. I'd love feedback on the weights, and
 on agent failure modes you've seen that it doesn't check for yet.
