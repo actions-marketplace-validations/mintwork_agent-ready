@@ -1,5 +1,6 @@
 name: agent-ready
-description: Score how well AI coding agents can work in your repo and fail CI below a threshold.
+description: Score how well AI coding agents can work in your repo (0-100) and fail CI below a threshold.
+author: mintwork
 branding:
   icon: cpu
   color: green

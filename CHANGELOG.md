@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [0.1.1] - 2026-11-14
+
+### Changed
+
+- GitHub Action metadata for the GitHub Marketplace listing (author, description).
+- Published from CI with npm trusted publishing (OIDC); no npm token is stored.
+- README badges consolidated into one row.
+
 ## [0.1.0] - 2026-11-14
 
 First public release.
@@ -42,4 +50,5 @@ First public release.
 - Programmatic API: `scan()`, `builtinChecks` and the `Check` type for custom checks.
 - Zero runtime dependencies; Node 22+.
 
+[0.1.1]: https://github.com/mintwork/agent-ready/releases/tag/v0.1.1
 [0.1.0]: https://github.com/mintwork/agent-ready/releases/tag/v0.1.0
