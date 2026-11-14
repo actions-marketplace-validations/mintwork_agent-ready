@@ -40,6 +40,6 @@ First public release.
   `version` inputs, a `score` output and a job summary. By default it runs the release matching the
   action tag.
 - Programmatic API: `scan()`, `builtinChecks` and the `Check` type for custom checks.
-- Zero runtime dependencies; Node 20+.
+- Zero runtime dependencies; Node 22+.
 
 [0.1.0]: https://github.com/ranjan-mohanty/agent-ready/releases/tag/v0.1.0

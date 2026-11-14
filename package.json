@@ -42,7 +42,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -60,10 +60,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.7",
-    "@types/node": "^20.19.43",
+    "@types/node": "^22.20.5",
     "playwright": "^1.65.1",
-    "typescript": "^5.9.3",
-    "vite": "^6.4.6",
-    "vitest": "^4.1.12"
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
   }
 }

@@ -105,7 +105,7 @@ npx agent-ready            # no install
 npm i -D agent-ready       # or pin it in your project
 ```
 
-Node 20+. Zero runtime dependencies. Works on JS/TS and Python repos, with basic Go and Rust support. Read-only unless you pass `--fix`.
+Node 22+. Zero runtime dependencies. Works on JS/TS and Python repos, with basic Go and Rust support. Read-only unless you pass `--fix`.
 
 ## Usage
 
@@ -166,7 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-        with: { node-version: 20 }
+        with: { node-version: lts/* }
       - run: npx --yes agent-ready@latest . --min-score 75
 ```
 

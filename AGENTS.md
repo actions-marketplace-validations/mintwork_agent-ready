@@ -38,7 +38,7 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 
 ## Conventions
 
-- Zero runtime dependencies. Node 20+ built-ins only.
+- Zero runtime dependencies. Node 22+ built-ins only.
 - Fixers never write directly: they return `FileChange`s; `applyFixes` refuses to overwrite without `--force`.
 - Checks must be fast (whole scan < 2s on a typical repo) and must not execute project code unless `--run` is passed.
   To read many files, use `ctx.mapFiles()` (concurrent, uncached) rather than `ctx.read()` in a loop.

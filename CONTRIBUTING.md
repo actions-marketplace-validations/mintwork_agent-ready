@@ -11,7 +11,7 @@ npm run check        # typecheck + lint + tests
 npm run build && node dist/bin.js .
 ```
 
-Requires Node 20+. There are **no runtime dependencies** and we'd like to keep it that way.
+Requires Node 22+. There are **no runtime dependencies** and we'd like to keep it that way.
 
 ## Adding a check
 
