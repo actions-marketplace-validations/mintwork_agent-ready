@@ -11,7 +11,22 @@ export function planFixes(ctx: RepoContext, checks: Check[] = builtinChecks): Fi
   for (const check of enabledChecks(ctx, checks)) {
     if (!check.fix) continue;
     for (const change of check.fix(ctx)) {
-      if (!byPath.has(change.path)) byPath.set(change.path, change);
+      const prev = byPath.get(change.path);
+      if (!prev) {
+        byPath.set(change.path, change);
+      } else if (
+        prev.kind === 'append' &&
+        change.kind === 'append' &&
+        prev.before === change.before &&
+        change.before !== null
+      ) {
+        // Chain two appends to the same file.
+        byPath.set(change.path, {
+          ...prev,
+          after: prev.after + change.after.slice(change.before.length),
+          description: `${prev.description}; ${change.description}`,
+        });
+      }
     }
   }
   return [...byPath.values()];

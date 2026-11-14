@@ -263,21 +263,26 @@ export function createContext(rootInput: string): RepoContext {
 
   const pyproject = read('pyproject.toml');
 
+  // A language counts if it has a manifest, or makes up a meaningful share of the code
+  // (a couple of helper scripts don't make a JS repo a Python project).
   const languages: Language[] = [];
   const tsFiles = filesWithExt('.ts', '.tsx', '.mts', '.cts').filter((f) => !f.endsWith('.d.ts'));
   const jsFiles = filesWithExt('.js', '.jsx', '.mjs', '.cjs');
   const pyFiles = filesWithExt('.py');
-  if (fileSet.has('tsconfig.json') || tsFiles.length > 0) languages.push('typescript');
-  if (jsFiles.length > 0 || (pkg && !languages.includes('typescript')))
-    languages.push('javascript');
-  if (
-    pyFiles.length > 0 ||
+  const codeTotal = tsFiles.length + jsFiles.length + pyFiles.length;
+  const significant = (n: number) =>
+    n > 0 && (n >= Math.max(3, codeTotal * 0.1) || n === codeTotal);
+  const hasTsconfig = files.some((f) => /(^|\/)tsconfig(\.[\w-]+)?\.json$/.test(f));
+  const pyManifest =
     pyproject !== null ||
     fileSet.has('setup.py') ||
-    fileSet.has('requirements.txt')
-  ) {
-    languages.push('python');
+    fileSet.has('requirements.txt') ||
+    fileSet.has('Pipfile');
+  if (hasTsconfig || significant(tsFiles.length)) languages.push('typescript');
+  if (significant(jsFiles.length) || (pkg && !languages.includes('typescript'))) {
+    languages.push('javascript');
   }
+  if (pyManifest || significant(pyFiles.length)) languages.push('python');
 
   return {
     root,

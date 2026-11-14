@@ -116,3 +116,35 @@ describe('fixture scoring', () => {
     expect(r.durationMs).toBeLessThan(2000);
   });
 });
+
+describe('heuristics found by dogfooding on real repos', () => {
+  it('treats vendored libraries as noise, not as files to split', async () => {
+    const dir = fixture('good-ts', {
+      git: true,
+      files: { 'public/third-party/jquery-1.12.4.js': `${bigFile(4000)}\n` },
+    });
+    const r = await scan(dir);
+    expect(check(r, 'nav.large-files').score).toBe(1);
+    expect(check(r, 'nav.generated').findings?.[0]?.message).toMatch(/vendored/);
+  });
+
+  it('only flags .env.test when it holds real-looking secrets', async () => {
+    const dummy = await scan(
+      fixture('good-ts', { git: true, files: { '.env.test': 'API_KEY=test-key\nPORT=3000\n' } }),
+    );
+    expect(check(dummy, 'safety.secrets').score).toBe(1);
+    const real = await scan(
+      fixture('good-ts', { git: true, files: { '.env.test': 'API_SECRET=q8Zr2LmN0pW4\n' } }),
+    );
+    const f = check(real, 'safety.secrets');
+    expect(f.findings?.[0]?.severity).toBe('warn');
+    expect(f.score).toBeGreaterThan(0.5);
+  });
+
+  it('a few helper scripts do not make a repo polyglot', async () => {
+    const r = await scan(
+      fixture('good-ts', { git: true, files: { 'scripts/gen.py': 'print(1)\n' } }),
+    );
+    expect(r.languages).not.toContain('python');
+  });
+});

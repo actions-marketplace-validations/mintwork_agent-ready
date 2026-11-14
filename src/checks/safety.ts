@@ -37,7 +37,7 @@ const SUPPRESS = 'agent-ready-ignore';
 
 const SECRET_FILES = [
   {
-    re: /(^|\/)\.env(\.(?!example$|sample$|template$|dist$|defaults?$)[\w.-]+)?$/,
+    re: /(^|\/)\.env(\.(?:local|prod|production|staging|live)[\w.-]*)?$/,
     name: 'dotenv file',
   },
   { re: /(^|\/)id_(rsa|dsa|ecdsa|ed25519)$/, name: 'SSH private key' },
@@ -49,9 +49,43 @@ const SECRET_FILES = [
 const BINARY_EXT =
   /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tgz|woff2?|ttf|eot|mp[34]|mov|wasm|so|dylib|dll|exe|bin|lockb|sqlite|db)$/i;
 
+/** Non-production dotenv files (.env.test, .env.development, ...) are often committed with dummy values. */
+const SOFT_ENV_FILE = /(^|\/)\.env\.(?!example$|sample$|template$|dist$|defaults?$)[\w.-]+$/;
+const SECRET_KEY_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|HASH|PRIVATE|CREDENTIAL)/i;
+const DUMMY_VALUE =
+  /^(?:test|testing|dummy|fake|mock|changeme|change-me|password|secret|local|dev|none|null|x+|\*+|0+|1234\d*)$|test|dummy|fake|mock|example|xxx|placeholder|your/i;
+
+function softEnvFinding(f: string, text: string): Finding | null {
+  for (const [i, raw] of text.split('\n').entries()) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*)$/.exec(raw);
+    if (!m) continue;
+    const key = m[1] ?? '';
+    const value = (m[2] ?? '').trim().replace(/^['"]|['"]$/g, '');
+    if (
+      SECRET_KEY_NAME.test(key) &&
+      value.length >= 6 &&
+      !DUMMY_VALUE.test(value) &&
+      !value.startsWith('$')
+    ) {
+      return {
+        severity: 'warn',
+        file: f,
+        line: i + 1,
+        message: `${key} has a real-looking value in a committed env file`,
+      };
+    }
+  }
+  return null;
+}
+
 export function scanSecrets(ctx: RepoContext): Finding[] {
   const findings: Finding[] = [];
   for (const f of ctx.files) {
+    if (SOFT_ENV_FILE.test(f) && !SECRET_FILES[0]?.re.test(f)) {
+      const soft = softEnvFinding(f, ctx.read(f) ?? '');
+      if (soft) findings.push(soft);
+      continue;
+    }
     const fileRule = SECRET_FILES.find((r) => r.re.test(f));
     if (fileRule && !/\.(pub|crt)$/.test(f)) {
       findings.push({
@@ -124,6 +158,11 @@ const RISKY_FOR_PUBLISH = new Set([
   'format',
 ]);
 
+/** True if a package.json script is destructive or publishes — never recommend it to agents. */
+export function isDangerousScript(body: string): boolean {
+  return PUBLISH.test(body) || DANGER_RULES.some((r) => r.why !== 'uses sudo' && r.re.test(body));
+}
+
 export function scanScripts(ctx: RepoContext): Finding[] {
   const findings: Finding[] = [];
   for (const [name, body] of Object.entries(ctx.scripts())) {
@@ -183,7 +222,14 @@ export const safetyChecks: Check[] = [
     weight: 3,
     run(ctx): CheckResult {
       const findings = scanSecrets(ctx);
-      const score = findings.length === 0 ? 1 : Math.max(0, 0.5 - 0.25 * (findings.length - 1));
+      const errors = findings.filter((f) => f.severity === 'error').length;
+      const warns = findings.length - errors;
+      const score =
+        findings.length === 0
+          ? 1
+          : errors === 0
+            ? Math.max(0.5, 0.85 - 0.1 * (warns - 1))
+            : Math.max(0, 0.5 - 0.25 * (errors - 1) - 0.05 * warns);
       return {
         score,
         summary:

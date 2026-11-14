@@ -1,6 +1,11 @@
 import { dirname, posix } from 'node:path';
 import type { RepoContext } from '../context.js';
-import { generateAgentsMd, generateClaudeMd } from '../fix/agents-md.js';
+import {
+  architectureSection,
+  commandsSection,
+  generateAgentsMd,
+  generateClaudeMd,
+} from '../fix/agents-md.js';
 import type { Check, FileChange, Finding } from '../types.js';
 import { type ContextDoc, findContextDocs, isRootDoc } from './docs.js';
 
@@ -166,7 +171,38 @@ function refExists(ctx: RepoContext, docPath: string, ref: string): boolean {
   if (ctx.exists(clean)) return true;
   const rel = posix.normalize(posix.join(dirname(docPath), clean));
   if (!rel.startsWith('..') && ctx.exists(rel)) return true;
+  // Bare filenames (`index.ts`) are usually mentioned in the context of some directory.
+  if (!clean.includes('/')) return ctx.files.some((f) => f === clean || f.endsWith(`/${clean}`));
   return false;
+}
+
+/** The doc an append-fix should target: AGENTS.md first, then CLAUDE.md, then any root markdown doc. */
+function primaryDoc(ctx: RepoContext): ContextDoc | undefined {
+  const docs = rootDocs(ctx).filter((d) => !isPointerDoc(d.content));
+  return (
+    docs.find((d) => d.path === 'AGENTS.md') ??
+    docs.find((d) => d.path === 'CLAUDE.md' || d.path === '.claude/CLAUDE.md') ??
+    docs.find((d) => d.path.endsWith('.md'))
+  );
+}
+
+/** A short doc that just points at another context doc (`@AGENTS.md`, `[CLAUDE.md](CLAUDE.md)`). */
+export function isPointerDoc(content: string): boolean {
+  return (
+    content.trim().split('\n').length < 12 &&
+    /(^|\s)@[\w./-]+\.md\b|\]\((?:\.\/)?(?:AGENTS|CLAUDE)\.md\)/m.test(content)
+  );
+}
+
+function appendSection(doc: ContextDoc, section: string[], description: string): FileChange {
+  const sep = doc.content.endsWith('\n') ? '\n' : '\n\n';
+  return {
+    path: doc.path,
+    before: doc.content,
+    after: `${doc.content}${sep}${section.join('\n')}`,
+    kind: 'append',
+    description,
+  };
 }
 
 function noDocResult(primary = false) {
@@ -231,6 +267,17 @@ export const contextChecks: Check[] = [
           : undefined,
       };
     },
+    fix(ctx) {
+      const doc = primaryDoc(ctx);
+      if (
+        !doc ||
+        /^#{1,4}\s*(commands|scripts|development|getting started)\b/im.test(doc.content)
+      ) {
+        return [];
+      }
+      if (detectCommands(doc.content).size === 3) return [];
+      return [appendSection(doc, commandsSection(ctx), 'Append detected build/test/lint commands')];
+    },
   },
   {
     id: 'context.architecture',
@@ -267,6 +314,14 @@ export const contextChecks: Check[] = [
             ? 'Add an "Architecture" section mapping key directories (e.g. `src/`, `tests/`) to their purpose.'
             : undefined,
       };
+    },
+    fix(ctx) {
+      const doc = primaryDoc(ctx);
+      const all = rootDocs(ctx)
+        .map((d) => d.content)
+        .join('\n');
+      if (!doc || /^#{1,4}\s*.*\b(architecture|structure|layout)\b/im.test(all)) return [];
+      return [appendSection(doc, architectureSection(ctx), 'Append an Architecture section')];
     },
   },
   {
@@ -334,7 +389,7 @@ export const contextChecks: Check[] = [
         if (lines > 1000) s = 0.1;
         else if (lines > 600) s = 0.4;
         else if (lines > 300) s = 0.7;
-        else if (d.content.trim().split('\n').length < 8 && !/^@\S+/m.test(d.content)) s = 0.5;
+        else if (d.content.trim().split('\n').length < 8 && !isPointerDoc(d.content)) s = 0.5;
         if (s < 1) {
           findings.push({
             severity: 'warn',

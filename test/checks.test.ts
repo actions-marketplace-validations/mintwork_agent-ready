@@ -66,3 +66,21 @@ describe('tsconfig resolution', () => {
     expect(opts).toMatchObject({ strict: true, target: 'ES2022' });
   });
 });
+
+describe('staleness', () => {
+  it('resolves bare filenames anywhere in the repo but flags truly missing ones', async () => {
+    const { scan } = await import('../src/scan.js');
+    const dir = fixture('good-ts', {
+      files: {
+        'AGENTS.md':
+          '# A\n\n## Commands\n\n`npm test`\n\nSee `math.ts` and `gone.ts` and `npm run nope`.\n',
+      },
+    });
+    const r = await scan(dir);
+    const fresh = r.checks.find((c) => c.id === 'context.fresh');
+    const msgs = (fresh?.findings ?? []).map((f) => f.message);
+    expect(msgs.some((m) => m.includes('math.ts'))).toBe(false);
+    expect(msgs.some((m) => m.includes('gone.ts'))).toBe(true);
+    expect(msgs.some((m) => m.includes('"nope"'))).toBe(true);
+  });
+});

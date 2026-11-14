@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { isDangerousScript } from '../checks/safety.js';
 import { type RepoContext, runScriptCmd } from '../context.js';
 
 const DIR_HINTS: Record<string, string> = {
@@ -59,7 +60,7 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
     ];
     for (const [name, label] of wanted) {
       const body = scripts[name];
-      if (body && !/no test specified/.test(body))
+      if (body && !/no test specified/.test(body) && !isDangerousScript(body))
         cmds.push({ label, cmd: runScriptCmd(ctx, name) });
     }
     if (!scripts.typecheck && !scripts['type-check'] && ctx.has('tsconfig.json')) {
@@ -117,20 +118,43 @@ function projectDescription(ctx: RepoContext): string | null {
   return m?.[1] ?? null;
 }
 
+export function commandsSection(ctx: RepoContext): string[] {
+  const cmds = detectCommands(ctx);
+  const lines = ['## Commands', ''];
+  if (cmds.length) {
+    lines.push('```bash');
+    const width = Math.max(...cmds.map((c) => c.cmd.length));
+    for (const c of cmds) lines.push(`${c.cmd.padEnd(width)}  # ${c.label}`);
+    lines.push('```', '');
+  } else {
+    lines.push('<!-- TODO: add the exact commands to build, test and lint this project. -->', '');
+  }
+  lines.push('Always run the test and lint commands before declaring a task done.', '');
+  return lines;
+}
+
+export function architectureSection(ctx: RepoContext): string[] {
+  const topDirs = [
+    ...new Set(ctx.files.filter((f) => f.includes('/')).map((f) => f.split('/')[0] as string)),
+  ]
+    .filter((d) => !d.startsWith('.') || d === '.github')
+    .sort();
+  const lines = ['## Architecture', ''];
+  if (topDirs.length) {
+    for (const d of topDirs) lines.push(`- \`${d}/\` — ${DIR_HINTS[d] ?? 'TODO: describe'}`);
+    lines.push('');
+  } else {
+    lines.push('<!-- TODO: describe the main modules and how they fit together. -->', '');
+  }
+  return lines;
+}
+
 export function generateAgentsMd(ctx: RepoContext): string {
   const name = projectName(ctx);
   const desc = projectDescription(ctx);
   const langs = ctx.languages.map((l) =>
     l === 'typescript' ? 'TypeScript' : l === 'javascript' ? 'JavaScript' : 'Python',
   );
-  const cmds = detectCommands(ctx);
-
-  const topDirs = [
-    ...new Set(ctx.files.filter((f) => f.includes('/')).map((f) => f.split('/')[0] as string)),
-  ]
-    .filter((d) => !d.startsWith('.') || d === '.github')
-    .sort();
-
   const lines: string[] = [];
   lines.push('# AGENTS.md', '');
   lines.push(
@@ -144,26 +168,7 @@ export function generateAgentsMd(ctx: RepoContext): string {
   if (desc) lines.push(desc, '');
   if (langs.length) lines.push(`Languages: ${langs.join(', ')}.`, '');
 
-  lines.push('## Commands', '');
-  if (cmds.length) {
-    lines.push('```bash');
-    const width = Math.max(...cmds.map((c) => c.cmd.length));
-    for (const c of cmds) lines.push(`${c.cmd.padEnd(width)}  # ${c.label}`);
-    lines.push('```', '');
-  } else {
-    lines.push('<!-- TODO: add the exact commands to build, test and lint this project. -->', '');
-  }
-  lines.push('Always run the test and lint commands before declaring a task done.', '');
-
-  lines.push('## Architecture', '');
-  if (topDirs.length) {
-    for (const d of topDirs) {
-      lines.push(`- \`${d}/\` — ${DIR_HINTS[d] ?? 'TODO: describe'}`);
-    }
-    lines.push('');
-  } else {
-    lines.push('<!-- TODO: describe the main modules and how they fit together. -->', '');
-  }
+  lines.push(...commandsSection(ctx), ...architectureSection(ctx));
 
   lines.push('## Conventions', '');
   lines.push('- Keep changes small and focused; match the existing code style.');

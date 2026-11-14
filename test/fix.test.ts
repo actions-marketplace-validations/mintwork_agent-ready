@@ -74,6 +74,19 @@ describe('--fix', () => {
     const changes = planFixes(createContext(dir));
     const agents = changes.find((c) => c.path === 'AGENTS.md');
     expect(agents?.after).toContain('CLAUDE.md');
-    expect(changes.some((c) => c.path === 'CLAUDE.md')).toBe(false);
+    // The existing (thin) CLAUDE.md gets missing sections appended, never rewritten.
+    const claude = changes.find((c) => c.path === 'CLAUDE.md');
+    expect(claude?.kind).toBe('append');
+    expect(claude?.after.startsWith(claude.before ?? '\u0000')).toBe(true);
+    expect(claude?.after).toContain('## Commands');
+    expect(claude?.after).toContain('## Architecture');
+  });
+});
+
+describe('generated docs safety', () => {
+  it('never recommends a script that publishes or deletes', () => {
+    const md = generateAgentsMd(createContext(fixture('bad-js')));
+    expect(md).not.toContain('npm run build');
+    expect(md).not.toContain('npm run clean');
   });
 });

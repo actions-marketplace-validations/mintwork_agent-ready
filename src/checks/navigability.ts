@@ -16,6 +16,14 @@ const PY_LOCKS = ['poetry.lock', 'uv.lock', 'Pipfile.lock', 'pdm.lock'];
 const LARGE_LINES = 1000;
 const HUGE_BYTES = 1024 * 1024;
 
+/** Third-party code copied into the repo (jquery-1.12.4.js, vendor/, third_party/). */
+export function isVendored(f: string): boolean {
+  return (
+    /(^|\/)(vendor|vendors|third[-_]party|thirdparty|external|bower_components)\//i.test(f) ||
+    /[-.]v?\d+\.\d+(\.\d+)?([-.]\w+)?(\.min)?\.(js|css)$/.test(f)
+  );
+}
+
 export function isGeneratedName(f: string): boolean {
   return (
     /\.min\.(js|css|mjs)$/.test(f) ||
@@ -156,7 +164,7 @@ export const navigabilityChecks: Check[] = [
         ];
         findings.push({
           severity: 'error',
-          message: `${ctx.trackedHeavy.length} files committed inside ${dirs.join(', ')}`,
+          message: `${ctx.trackedHeavy.length} file(s) committed inside ${dirs.join(', ')} — run \`git rm -r --cached ${dirs.join(' ')}\``,
         });
       }
       for (const m of missingIgnoreEntries(ctx)) {
@@ -187,7 +195,9 @@ export const navigabilityChecks: Check[] = [
     title: `No oversized source files (>${LARGE_LINES} lines)`,
     weight: 3,
     run(ctx): CheckResult {
-      const sources = ctx.files.filter((f) => SOURCE_EXT.test(f) && !isGeneratedName(f));
+      const sources = ctx.files.filter(
+        (f) => SOURCE_EXT.test(f) && !isGeneratedName(f) && !isVendored(f),
+      );
       const large: Array<{ f: string; n: number }> = [];
       for (const f of sources) {
         const sz = ctx.size(f);
@@ -223,9 +233,11 @@ export const navigabilityChecks: Check[] = [
     run(ctx): CheckResult {
       const findings: Finding[] = [];
       for (const f of ctx.files) {
-        if (LOCKFILES.includes(f) || PY_LOCKS.includes(f) || f.endsWith('.snap')) continue;
+        const base = f.slice(f.lastIndexOf('/') + 1);
+        if (LOCKFILES.includes(base) || PY_LOCKS.includes(base) || f.endsWith('.snap')) continue;
         const sz = ctx.size(f);
-        const generatedName = isGeneratedName(f) && sz > 50 * 1024;
+        const vendored = isVendored(f) && SOURCE_EXT.test(f) && sz > 50 * 1024;
+        const generatedName = (isGeneratedName(f) && sz > 50 * 1024) || vendored;
         const huge = sz > HUGE_BYTES && SOURCE_EXT.test(f);
         const bigText =
           sz > HUGE_BYTES && /\.(json|csv|tsv|txt|xml|svg|sql|log|ndjson|jsonl)$/.test(f);
@@ -233,7 +245,7 @@ export const navigabilityChecks: Check[] = [
           findings.push({
             severity: 'warn',
             file: f,
-            message: `${(sz / 1024).toFixed(0)} KB ${generatedName ? 'generated/minified' : 'blob'}`,
+            message: `${(sz / 1024).toFixed(0)} KB ${vendored ? 'vendored third-party code' : generatedName ? 'generated/minified' : 'blob'}`,
           });
         }
       }
