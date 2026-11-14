@@ -35,3 +35,14 @@ export function bigFile(lines: number): string {
 
 /** Built from pieces so this source file never contains a real-looking secret. */
 export const FAKE_AWS_KEY = ['AKIA', 'Q3EGRZ7T', 'WNB4K2PL'].join('');
+
+/** A PEM private key block with a plausible base64 body, assembled so this file never contains one. */
+export function fakePrivateKey(): string {
+  const header = ['-----BEGIN ', 'PRIVATE', ' KEY-----'].join('');
+  const footer = ['-----END ', 'PRIVATE', ' KEY-----'].join('');
+  const body = Array.from({ length: 4 }, (_, i) => `MIIB${'q7Rz'.repeat(15)}${i}`).join('\n');
+  return `${header}\n${body}\n${footer}\n`;
+}
+
+/** A GitHub-token-shaped string, assembled from pieces. */
+export const FAKE_GH_TOKEN = ['gh', 'p_', 'Zq4Lm8Rt2Wx6Np0Kv3Hs7Jd1Fb5Gc9Ya2Ue4'].join('');
