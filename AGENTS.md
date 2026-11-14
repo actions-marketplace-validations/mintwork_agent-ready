@@ -26,7 +26,8 @@ node dist/bin.js .   # run the CLI against this repo (build first)
 - `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`).
 - `src/fix/` — `agents-md.ts` generates starter docs; `index.ts` plans and applies changes safely.
 - `src/report/` — terminal renderer and shields.io badge.
-- `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors.
+- `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
+  path classifiers (`paths.ts`: test/fixture/example paths).
 - `examples/` — copy-paste CI workflow; `action.yml` at the root is the reusable GitHub Action.
 - `test/` — vitest suites; `test/fixtures/` holds good/bad sample repos (excluded from our own scan
   via `agent-ready.config.json`).
@@ -36,6 +37,12 @@ node dist/bin.js .   # run the CLI against this repo (build first)
 - Zero runtime dependencies. Node 20+ built-ins only.
 - Fixers never write directly: they return `FileChange`s; `applyFixes` refuses to overwrite without `--force`.
 - Checks must be fast (whole scan < 2s on a typical repo) and must not execute project code unless `--run` is passed.
+  To read many files, use `ctx.mapFiles()` (concurrent, uncached) rather than `ctx.read()` in a loop.
+- Per-language checks should return `weightScale: ctx.share(lang)` (or weight their parts by it) so
+  minor languages in a polyglot repo don't dominate.
+- Test fixtures, examples and docs are not product code: use `src/util/paths.ts` to keep them from
+  triggering findings meant for the product (secrets, oversized files, type coverage).
+- `test/field.test.ts` holds regressions for false positives found on real repos — synthetic snippets only.
 - Never put real-looking secrets in source or tests — build them from string pieces (see `test/helpers.ts`).
 - Every new check needs a test against a fixture that fails it and one that passes it.
 
