@@ -113,6 +113,24 @@ export function projectTsconfigs(ctx: RepoContext): string[] {
   return (real.length ? real : all).slice(0, MAX_TSCONFIGS);
 }
 
+/** Number of product TS files (min 1) whose nearest enclosing tsconfig is each config. */
+function tsconfigWeights(ctx: RepoContext, tsconfigs: string[]): number[] {
+  const dirs = tsconfigs.map((t) => {
+    const d = posix.dirname(t);
+    return d === '.' ? '' : `${d}/`;
+  });
+  const counts = tsconfigs.map(() => 0);
+  for (const f of ctx.filesWithExt('.ts', '.tsx', '.mts', '.cts')) {
+    if (f.endsWith('.d.ts') || isAuxiliaryPath(f)) continue;
+    let best = -1;
+    for (const [i, d] of dirs.entries()) {
+      if (f.startsWith(d) && (best === -1 || d.length > (dirs[best] as string).length)) best = i;
+    }
+    if (best !== -1) counts[best] = (counts[best] ?? 0) + 1;
+  }
+  return counts.map((n) => Math.max(1, n));
+}
+
 async function tsCheck(
   ctx: RepoContext,
 ): Promise<{ score: number; summary: string; findings: Finding[] }> {
@@ -124,14 +142,20 @@ async function tsCheck(
     base = 0.2;
     summary = 'TypeScript files but no tsconfig.json';
   } else {
+    // Weight each config by the product TS files it governs (nearest tsconfig above the file), so a
+    // loose config for a few dev scripts doesn't count as much as the main package.
+    const weights = tsconfigWeights(ctx, tsconfigs);
     let total = 0;
+    let totalW = 0;
     let strictCount = 0;
     const loose: string[] = [];
     let partialNames: string[] = [];
-    for (const t of tsconfigs) {
+    for (const [i, t] of tsconfigs.entries()) {
+      const w = weights[i] ?? 1;
+      totalW += w;
       const opts = resolveCompilerOptions(ctx, t);
       if (opts.strict === true) {
-        total += 1;
+        total += w;
         strictCount++;
         continue;
       }
@@ -139,10 +163,10 @@ async function tsCheck(
         (k) => opts[k] === true,
       );
       if (loose.length === 0) partialNames = partial;
-      total += 0.3 + 0.15 * partial.length;
+      total += w * (0.3 + 0.15 * partial.length);
       loose.push(t);
     }
-    base = total / tsconfigs.length;
+    base = total / totalW;
     const n = tsconfigs.length;
     if (loose.length === 0) {
       summary =

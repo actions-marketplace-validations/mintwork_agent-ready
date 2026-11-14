@@ -466,3 +466,25 @@ describe('scan I/O', () => {
     expect(r.durationMs).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('type safety: tsconfig weighting', () => {
+  it('weights tsconfigs by the product files they govern', async () => {
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({ name: 'x', scripts: { typecheck: 'tsc -b' } }),
+      'packages/core/tsconfig.json': '{ "compilerOptions": { "strict": true } }',
+      'tools/gen/tsconfig.json': '{ "compilerOptions": { "strict": false } }',
+      'tools/gen/main.ts': 'export {};\n',
+    };
+    for (let i = 0; i < 30; i++)
+      files[`packages/core/src/m${i}.ts`] = `export const v${i} = ${i};\n`;
+    const r = await scan(fixture(null, { git: true, files }));
+    expect(check(r, 'types.typescript').score).toBeGreaterThan(0.9);
+  });
+
+  it('does not ask to split bundled .d.ts declaration libraries', async () => {
+    const r = await scan(
+      fixture('good-ts', { git: true, files: { 'src/libs/lib.dom.d.ts': `${bigFile(3000)}\n` } }),
+    );
+    expect(check(r, 'nav.large-files').score).toBe(1);
+  });
+});

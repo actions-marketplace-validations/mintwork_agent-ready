@@ -227,8 +227,14 @@ export const navigabilityChecks: Check[] = [
     weight: 3,
     async run(ctx): Promise<CheckResult> {
       // Test fixtures and snapshot baselines are data: nobody splits them, agents rarely read them whole.
+      // Declaration files (`lib.dom.d.ts`) are generated or bundled, not something to split.
       const sources = ctx.files.filter(
-        (f) => SOURCE_EXT.test(f) && !isGeneratedName(f) && !isVendored(f) && !isFixturePath(f),
+        (f) =>
+          SOURCE_EXT.test(f) &&
+          !f.endsWith('.d.ts') &&
+          !isGeneratedName(f) &&
+          !isVendored(f) &&
+          !isFixturePath(f),
       );
       // Too small to exceed the limit, or huge (handled by nav.generated).
       const candidates = sources.filter((f) => {
