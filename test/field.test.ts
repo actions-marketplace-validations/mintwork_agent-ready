@@ -273,3 +273,84 @@ describe('navigability: fixtures, generated code and big repos', () => {
     expect(s).toBeLessThan(0.9);
   });
 });
+
+describe('type safety: python hints and monorepo tsconfigs', () => {
+  it('counts annotations containing commas and defaults with calls', async () => {
+    const { pythonAnnotationCoverage } = await import('../src/checks/type-safety.js');
+    const src = [
+      'def a(x: Dict[str, int], y: Annotated[str, Query(min_length=1, max_length=5)]):',
+      '    pass',
+      'def b(x: int = compute(1, 2), *, flag: bool = False):',
+      '    pass',
+      'def c(',
+      '    items: list[tuple[int, str]],  # pairs (id, name)',
+      '    **kwargs: Any,',
+      '):',
+      '    pass',
+      'def d(x, y=f(1, 2)):',
+      '    pass',
+    ].join('\n');
+    expect(pythonAnnotationCoverage(src)).toEqual({ total: 4, annotated: 3 });
+  });
+
+  it('measures product code, not test functions or docs examples', async () => {
+    const typed = 'def handler(x: int) -> int:\n    return x\n';
+    const files: Record<string, string> = {
+      'pyproject.toml': '[project]\nname = "x"\n[tool.mypy]\nstrict = true\n',
+      'pkg/core.py': typed.repeat(3),
+      'tests/test_core.py': 'def test_a():\n    pass\n'.repeat(10),
+      'docs_src/tutorial.py': 'def read(q=None):\n    return q\n'.repeat(10),
+    };
+    const r = await scan(fixture(null, { git: true, files }));
+    expect(check(r, 'types.python').summary).toMatch(/~100% of 3 Python functions/);
+  });
+
+  it('judges strictness across package tsconfigs, resolving workspace extends', async () => {
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({ name: 'mono', private: true, scripts: { test: 'vitest' } }),
+      // root config only covers repo scripts and is loose
+      'tsconfig.json': '{ "compilerOptions": { "strict": false }, "include": ["scripts"] }',
+      'packages/config/package.json': '{ "name": "@repo/tsconfig" }',
+      'packages/config/base.json': '{ "compilerOptions": { "strict": true } }',
+      'packages/a/tsconfig.json': '{ "extends": "@repo/tsconfig/base.json" }',
+      'packages/b/tsconfig.json': '{ "extends": "@repo/tsconfig/base" }',
+      'packages/c/tsconfig.json': '{ "extends": "../config/base.json" }',
+      'packages/a/src/index.ts': 'export const a: number = 1;\n',
+    };
+    const r = await scan(fixture(null, { git: true, files }));
+    const t = check(r, 'types.typescript');
+    expect(t.summary).toMatch(/strict mode on in 3 of 4 tsconfigs/);
+    expect(t.score).toBeGreaterThan(0.8);
+  });
+
+  it('skips solution-style tsconfigs that only hold references', async () => {
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({ name: 'x', scripts: { typecheck: 'tsc -b' } }),
+      'tsconfig.json': '{ "files": [], "references": [{ "path": "./packages/a" }] }',
+      'packages/a/tsconfig.json': '{ "compilerOptions": { "strict": true } }',
+      'packages/a/src/index.ts': 'export const a = 1;\n',
+    };
+    const r = await scan(fixture(null, { git: true, files }));
+    expect(check(r, 'types.typescript').score).toBe(1);
+  });
+
+  it('finds typecheck tasks run through monorepo runners and nested tsconfigs', async () => {
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({
+        name: 'x',
+        scripts: { 'check-types': 'turbo run check-types' },
+      }),
+      'apps/web/tsconfig.json': '{ "compilerOptions": { "strict": true } }',
+      'apps/web/src/index.ts': 'export const a = 1;\n',
+    };
+    const r = await scan(fixture(null, { git: true, files }));
+    expect(check(r, 'feedback.typecheck').score).toBe(1);
+    const noScript = await scan(
+      fixture(null, {
+        git: true,
+        files: { ...files, 'package.json': '{"name":"x"}' },
+      }),
+    );
+    expect(check(noScript, 'feedback.typecheck').summary).toMatch(/tsconfig.json but no typecheck/);
+  });
+});

@@ -1,13 +1,63 @@
 import { join, posix } from 'node:path';
 import type { RepoContext } from '../context.js';
 import type { Check, CheckResult, Finding } from '../types.js';
+import { isAuxiliaryPath, isFixturePath } from '../util/paths.js';
 
 interface TsConfig {
   extends?: string | string[];
   compilerOptions?: Record<string, unknown>;
+  files?: unknown[];
+  include?: unknown[];
+  references?: unknown[];
 }
 
-/** Resolve compilerOptions through local and node_modules `extends` chains. */
+/** Workspace package name -> directory, for `"extends": "@repo/tsconfig/base.json"` without node_modules. */
+function workspacePackages(ctx: RepoContext): Map<string, string[]> {
+  const cached = wsCache.get(ctx);
+  if (cached) return cached;
+  const map = new Map<string, string[]>();
+  for (const f of ctx.files) {
+    if (!f.endsWith('package.json') || !/(^|\/)package\.json$/.test(f)) continue;
+    const name = ctx.readJson<{ name?: string }>(f)?.name;
+    if (typeof name !== 'string') continue;
+    const dir = posix.dirname(f);
+    map.set(name, [...(map.get(name) ?? []), dir]);
+  }
+  wsCache.set(ctx, map);
+  return map;
+}
+const wsCache = new WeakMap<RepoContext, Map<string, string[]>>();
+
+function commonPrefix(a: string, b: string): number {
+  const x = a.split('/');
+  const y = b.split('/');
+  let i = 0;
+  while (i < x.length && i < y.length && x[i] === y[i]) i++;
+  return i;
+}
+
+function resolvePackageExtends(ctx: RepoContext, from: string, ext: string): string | null {
+  const nm = [
+    join('node_modules', ext),
+    join('node_modules', `${ext}.json`),
+    join('node_modules', ext, 'tsconfig.json'),
+  ].find((c) => c.endsWith('.json') && ctx.exists(c));
+  if (nm) return nm;
+  const parts = ext.split('/');
+  const nameLen = ext.startsWith('@') ? 2 : 1;
+  const name = parts.slice(0, nameLen).join('/');
+  const sub = parts.slice(nameLen).join('/');
+  const dirs = workspacePackages(ctx).get(name);
+  if (!dirs?.length) return null;
+  // Several examples may define the same package name; prefer the one nearest the tsconfig.
+  const dir = [...dirs].sort((a, b) => commonPrefix(b, from) - commonPrefix(a, from))[0] as string;
+  const candidates = sub
+    ? [posix.join(dir, sub), posix.join(dir, `${sub}.json`), posix.join(dir, sub, 'tsconfig.json')]
+    : [posix.join(dir, 'tsconfig.json')];
+  return candidates.find((c) => c.endsWith('.json') && ctx.exists(c)) ?? null;
+}
+
+/** Resolve compilerOptions through local, workspace-package and node_modules `extends` chains. */
 export function resolveCompilerOptions(
   ctx: RepoContext,
   rel = 'tsconfig.json',
@@ -20,18 +70,14 @@ export function resolveCompilerOptions(
   const exts =
     cfg.extends === undefined ? [] : Array.isArray(cfg.extends) ? cfg.extends : [cfg.extends];
   for (const ext of exts) {
+    if (typeof ext !== 'string') continue;
     let target: string | null = null;
     if (ext.startsWith('.')) {
       target = posix.normalize(posix.join(posix.dirname(rel), ext));
       if (!target.endsWith('.json')) target += '.json';
     } else {
-      // package config, e.g. "@tsconfig/strictest/tsconfig.json" or "@tsconfig/node20"
-      const candidates = [
-        join('node_modules', ext),
-        join('node_modules', `${ext}.json`),
-        join('node_modules', ext, 'tsconfig.json'),
-      ];
-      target = candidates.find((c) => ctx.exists(c) && c.endsWith('.json')) ?? null;
+      // package config, e.g. "@tsconfig/strictest/tsconfig.json" or a workspace "@repo/tsconfig/base.json"
+      target = resolvePackageExtends(ctx, rel, ext);
       if (!target && /strictest|strict/.test(ext)) base = { ...base, strict: true };
     }
     if (target) base = { ...base, ...resolveCompilerOptions(ctx, target, depth + 1) };
@@ -39,34 +85,77 @@ export function resolveCompilerOptions(
   return { ...base, ...(cfg.compilerOptions ?? {}) };
 }
 
+/** A "solution" tsconfig that only lists project references and compiles nothing itself. */
+function isSolutionConfig(cfg: TsConfig | null): boolean {
+  if (!cfg) return true;
+  return (
+    Array.isArray(cfg.references) &&
+    cfg.references.length > 0 &&
+    Array.isArray(cfg.files) &&
+    cfg.files.length === 0 &&
+    !cfg.include
+  );
+}
+
+const MAX_TSCONFIGS = 60;
+
+/** The tsconfig.json files that define the product's TypeScript settings (root + packages). */
+export function projectTsconfigs(ctx: RepoContext): string[] {
+  const found = ctx.files
+    .filter((f) => /(^|\/)tsconfig\.json$/.test(f) && !isFixturePath(f))
+    .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+  if (ctx.exists('tsconfig.json') && !found.includes('tsconfig.json'))
+    found.unshift('tsconfig.json');
+  // Prefer product configs; fall back to examples/playgrounds when that's all the TypeScript there is.
+  const product = found.filter((f) => !isAuxiliaryPath(f));
+  const all = product.length ? product : found;
+  const real = all.filter((f) => !isSolutionConfig(ctx.readJson<TsConfig>(f)));
+  return (real.length ? real : all).slice(0, MAX_TSCONFIGS);
+}
+
 function tsCheck(ctx: RepoContext): { score: number; summary: string; findings: Finding[] } {
   const findings: Finding[] = [];
-  const tsconfigs = [
-    'tsconfig.json',
-    ...ctx.files.filter((f) => /(^|\/)tsconfig\.json$/.test(f) && f !== 'tsconfig.json'),
-  ];
-  const primary = tsconfigs.find((t) => ctx.exists(t));
+  const tsconfigs = projectTsconfigs(ctx);
   let base: number;
   let summary: string;
-  if (!primary) {
+  if (tsconfigs.length === 0) {
     base = 0.2;
     summary = 'TypeScript files but no tsconfig.json';
   } else {
-    const opts = resolveCompilerOptions(ctx, primary);
-    if (opts.strict === true) {
-      base = 1;
-      summary = `strict mode on (${primary})`;
-    } else {
+    let total = 0;
+    let strictCount = 0;
+    const loose: string[] = [];
+    let partialNames: string[] = [];
+    for (const t of tsconfigs) {
+      const opts = resolveCompilerOptions(ctx, t);
+      if (opts.strict === true) {
+        total += 1;
+        strictCount++;
+        continue;
+      }
       const partial = ['noImplicitAny', 'strictNullChecks', 'strictFunctionTypes'].filter(
         (k) => opts[k] === true,
       );
-      base = 0.3 + 0.15 * partial.length;
-      summary = partial.length
-        ? `strict off; ${partial.join(', ')} on`
-        : `strict mode off (${primary})`;
+      if (loose.length === 0) partialNames = partial;
+      total += 0.3 + 0.15 * partial.length;
+      loose.push(t);
+    }
+    base = total / tsconfigs.length;
+    const n = tsconfigs.length;
+    if (loose.length === 0) {
+      summary =
+        n === 1 ? `strict mode on (${tsconfigs[0]})` : `strict mode on (all ${n} tsconfigs)`;
+    } else if (n === 1) {
+      summary = partialNames.length
+        ? `strict off; ${partialNames.join(', ')} on`
+        : `strict mode off (${tsconfigs[0]})`;
+    } else {
+      summary = `strict mode on in ${strictCount} of ${n} tsconfigs`;
+    }
+    for (const t of loose.slice(0, 5)) {
       findings.push({
         severity: 'warn',
-        file: primary,
+        file: t,
         message: 'set "strict": true in compilerOptions',
       });
     }
@@ -74,7 +163,7 @@ function tsCheck(ctx: RepoContext): { score: number; summary: string; findings: 
   // Penalize escape hatches.
   const tsFiles = ctx
     .filesWithExt('.ts', '.tsx', '.mts', '.cts')
-    .filter((f) => !f.endsWith('.d.ts'));
+    .filter((f) => !f.endsWith('.d.ts') && !isFixturePath(f));
   let nocheck = 0;
   let ignores = 0;
   let anys = 0;
@@ -96,6 +185,40 @@ function tsCheck(ctx: RepoContext): { score: number; summary: string; findings: 
   return { score: Math.max(0, base - penalty), summary, findings };
 }
 
+/** Remove `# comments` from a parameter list (they may contain commas or parens). */
+function stripComments(params: string): string {
+  return params.replace(/#[^\n]*/g, '');
+}
+
+/** Split on commas that are not nested inside brackets or string literals: `Dict[str, int]` is one. */
+export function splitTopLevel(params: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let cur = '';
+  for (let i = 0; i < params.length; i++) {
+    const ch = params[i] as string;
+    if (quote) {
+      if (ch === '\\') {
+        cur += ch + (params[i + 1] ?? '');
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (ch === ',' && depth === 0) {
+      out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
 /** Estimate fraction of Python functions with type annotations. */
 export function pythonAnnotationCoverage(source: string): { total: number; annotated: number } {
   let total = 0;
@@ -115,8 +238,7 @@ export function pythonAnnotationCoverage(source: string): { total: number; annot
     const params = source.slice(start, i - 1);
     const after = source.slice(i, source.indexOf(':', i) + 1 || i + 200);
     total++;
-    const paramList = params
-      .split(',')
+    const paramList = splitTopLevel(stripComments(params))
       .map((p) => p.trim())
       .filter(
         (p) =>
@@ -137,7 +259,13 @@ export function pythonAnnotationCoverage(source: string): { total: number; annot
 }
 
 function pyCheck(ctx: RepoContext): { score: number; summary: string; findings: Finding[] } {
-  const pyFiles = ctx.filesWithExt('.py').filter((f) => !/(^|\/)(migrations|_pb2)/.test(f));
+  const all = ctx
+    .filesWithExt('.py')
+    .filter((f) => !/(^|\/)(migrations|_pb2)/.test(f) && !isFixturePath(f));
+  // Measure the product code: test functions (`def test_x():`), docs snippets and examples are
+  // conventionally unannotated and say little about the types an agent will lean on.
+  const product = all.filter((f) => !isAuxiliaryPath(f));
+  const pyFiles = product.length > 0 ? product : all;
   let total = 0;
   let annotated = 0;
   for (const f of pyFiles.slice(0, 2000)) {
@@ -190,7 +318,7 @@ export const typeSafetyChecks: Check[] = [
         return { score: null, summary: 'No TypeScript/JavaScript' };
       }
       const r = tsCheck(ctx);
-      const strictOn = r.summary.startsWith('strict mode on');
+      const strictOn = r.summary.startsWith('strict mode on (');
       return {
         ...r,
         suggestion:

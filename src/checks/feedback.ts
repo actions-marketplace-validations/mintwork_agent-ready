@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { type RepoContext, runScriptCmd } from '../context.js';
 import type { Check, CheckResult } from '../types.js';
+import { projectTsconfigs } from './type-safety.js';
 
 const JS_TEST_DEPS = [
   'vitest',
@@ -201,11 +202,20 @@ export const feedbackChecks: Check[] = [
       const parts: number[] = [];
       const notes: string[] = [];
       if (ctx.languages.includes('typescript')) {
-        const scripts = Object.values(ctx.scripts());
-        if (scripts.some((s) => /\b(tsc|vue-tsc|svelte-check|tsgo)\b/.test(s))) {
+        const scripts = ctx.scripts();
+        const typecheckScript = Object.entries(scripts).find(
+          ([name, body]) =>
+            /^(typecheck|type-check|check-types|types|tsc|check:types|types:check)$/.test(name) ||
+            /\b(tsc|vue-tsc|svelte-check|tsgo)\b/.test(body) ||
+            // monorepo task runners: `turbo run check-types`, `nx run-many -t typecheck`
+            /\b(turbo|nx|lerna|pnpm\s+-r|pnpm\s+--recursive|wireit)\b[^&;|]*\b(typecheck|type-check|check-types|types)\b/.test(
+              body,
+            ),
+        );
+        if (typecheckScript) {
           parts.push(1);
-          notes.push('tsc in scripts');
-        } else if (ctx.has('tsconfig.json')) {
+          notes.push(`"${typecheckScript[0]}" script`);
+        } else if (projectTsconfigs(ctx).length > 0) {
           parts.push(0.6);
           notes.push('tsconfig.json but no typecheck script');
         } else {
