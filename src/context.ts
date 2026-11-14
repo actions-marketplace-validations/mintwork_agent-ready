@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { UserConfig } from './types.js';
 import { Matcher, parseIgnoreFile } from './util/glob.js';
@@ -398,12 +398,7 @@ export function createContext(rootInput: string): RepoContext {
       const todo = files.filter((f) => !statCache.has(f));
       await pool(todo, async (f) => {
         try {
-          const fh = await open(join(root, f), 'r');
-          try {
-            statCache.set(f, (await fh.stat()).size);
-          } finally {
-            await fh.close();
-          }
+          statCache.set(f, (await stat(join(root, f))).size);
         } catch {
           statCache.set(f, -1);
         }
@@ -424,6 +419,15 @@ export function createContext(rootInput: string): RepoContext {
         const known = statCache.get(f);
         if (known !== undefined && (known <= 0 || known > maxBytes)) return;
         let text: string | null = null;
+        if (known !== undefined) {
+          try {
+            text = await readFile(join(root, f), 'utf8');
+          } catch {
+            text = null;
+          }
+          if (text !== null && !text.includes('\0')) out[i] = fn(f, text);
+          return;
+        }
         try {
           const fh = await open(join(root, f), 'r');
           try {
