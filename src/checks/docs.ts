@@ -34,6 +34,8 @@ export function findContextDocs(ctx: RepoContext): ContextDoc[] {
   for (const f of ctx.files) {
     if (f.startsWith('.cursor/rules/') && (f.endsWith('.mdc') || f.endsWith('.md'))) {
       add(f, 'Cursor');
+    } else if (/^\.github\/instructions\/[^/]+\.md$/.test(f)) {
+      add(f, 'GitHub Copilot');
     } else if (/(^|\/)(AGENTS|CLAUDE)\.md$/.test(f)) {
       add(f, f.endsWith('AGENTS.md') ? 'Codex / Cursor / many' : 'Claude Code');
     }
@@ -41,11 +43,13 @@ export function findContextDocs(ctx: RepoContext): ContextDoc[] {
   return docs;
 }
 
+/** Docs that apply to the whole repo (vs. nested AGENTS.md/CLAUDE.md scoped to a subtree). */
 export function isRootDoc(path: string): boolean {
   return (
     !path.includes('/') ||
     path.startsWith('.cursor/rules/') ||
-    path.startsWith('.claude/') ||
-    path.startsWith('.github/')
+    path === '.claude/CLAUDE.md' ||
+    path === '.github/copilot-instructions.md' ||
+    /^\.github\/instructions\/[^/]+\.md$/.test(path)
   );
 }

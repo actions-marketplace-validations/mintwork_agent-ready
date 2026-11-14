@@ -26,19 +26,21 @@ export function codeText(md: string): string {
 }
 
 const RUNNERS =
-  '(?:npm|pnpm|yarn|bun|npx|bunx|make|just|task|uv|poetry|pdm|hatch|tox|nox|python3?|pip|cargo|go|deno|turbo|nx)';
+  '(?:npm|pnpm|yarn|bun|npx|bunx|nub|vp|make|just|task|mise|moon|uv|uvx|poetry|pdm|hatch|tox|nox|python3?|pip|cargo|go|deno|turbo|nx|bazel|bazelisk|gradlew|gradle|mvn|dotnet|rake|bundle|mix)';
+/** Any tool invoked as `<tool> run|exec <task>` (e.g. `mise run test`, `nub exec vitest`). */
+const GENERIC_RUN = '(?:\\b[\\w.-]+\\s+(?:run|exec)\\b)';
 
 const COMMAND_KINDS: Record<string, RegExp> = {
   test: new RegExp(
-    `(?:\\b${RUNNERS}\\b[^\\n]*\\b(?:test|tests|vitest|jest|pytest|mocha|ava)\\b)|^\\s*(?:pytest|vitest|jest|mocha)\\b`,
+    `(?:(?:\\b${RUNNERS}\\b|${GENERIC_RUN})[^\\n]*\\b(?:test|tests|vitest|jest|pytest|mocha|ava|nextest)\\b)|^\\s*(?:pytest|vitest|jest|mocha)\\b|(?:^|\\s)\\.\\/[\\w.-]*tests?[\\w.-]*\\b`,
     'im',
   ),
   lint: new RegExp(
-    `(?:\\b${RUNNERS}\\b[^\\n]*\\b(?:lint|eslint|biome|ruff|flake8|pylint|check|typecheck|tsc|mypy|pyright)\\b)|^\\s*(?:ruff|eslint|biome|flake8|pylint|mypy|pyright|tsc)\\b`,
+    `(?:(?:\\b${RUNNERS}\\b|${GENERIC_RUN})[^\\n]*\\b(?:lint|eslint|biome|oxlint|ruff|flake8|pylint|check|typecheck|tsc|mypy|pyright|clippy|vet|golangci-lint|staticcheck)\\b)|^\\s*(?:ruff|eslint|biome|oxlint|flake8|pylint|mypy|pyright|tsc|golangci-lint|staticcheck|pre-commit)\\b`,
     'im',
   ),
   build: new RegExp(
-    `(?:\\b${RUNNERS}\\b[^\\n]*\\b(?:build|compile|bundle|install|sync|dev|start)\\b)|^\\s*(?:tsc|vite|webpack|esbuild)\\b`,
+    `(?:(?:\\b${RUNNERS}\\b|${GENERIC_RUN})[^\\n]*\\b(?:build|compile|bundle|install|sync|dev|start)\\b)|^\\s*(?:tsc|vite|webpack|esbuild)\\b|^\\s*(?:make|just)\\s*$`,
     'im',
   ),
 };
@@ -90,6 +92,10 @@ export function extractPathRefs(md: string): string[] {
     if (c.startsWith('-') || c.startsWith('~') || c.startsWith('/') || c.startsWith('@')) continue;
     if (NOT_PATHS.has(c.toLowerCase())) continue;
     if (/^\d/.test(c)) continue;
+    // A bare extension (`.ts`, `.md`); real dotfiles like `.nvmrc` are kept.
+    if (/^\.\w+$/.test(c) && KNOWN_EXT.test(c)) continue;
+    // Go module paths, registries and hosts: `github.com/org/repo`, `ghcr.io/x`.
+    if (/^[\w-]+(\.[\w-]+)*\.(com|org|io|dev|net|sh|app|co|ai|so)\//i.test(c)) continue;
     const looksLikePath =
       (c.includes('/') && /^[\w.-]+(\/[\w.@-]*)+$/.test(c)) ||
       (KNOWN_EXT.test(c) && /^[\w.-]+$/.test(c));
@@ -104,7 +110,7 @@ export function extractPathRefs(md: string): string[] {
 export function extractScriptRefs(md: string): string[] {
   const code = codeText(md);
   const refs = new Set<string>();
-  for (const m of code.matchAll(/\b(?:npm|pnpm|yarn|bun)\s+run\s+([\w:.-]+)/g))
+  for (const m of code.matchAll(/\b(?:npm|pnpm|yarn|bun)[ \t]+run[ \t]+([\w:.-]+)/g))
     refs.add(m[1] ?? '');
   // pnpm/yarn shorthand: `pnpm build` (skip builtins)
   const builtins = new Set([
@@ -159,21 +165,64 @@ export function extractScriptRefs(md: string): string[] {
     'jest',
     'eslint',
   ]);
-  for (const m of code.matchAll(/^\s*(?:\$\s*)?(?:pnpm|yarn)\s+([\w:.-]+)/gm)) {
+  for (const m of code.matchAll(/^\s*(?:\$[ \t]*)?(?:pnpm|yarn)[ \t]+([\w:.-]+)/gm)) {
     const s = m[1] ?? '';
     if (!builtins.has(s) && !s.startsWith('-')) refs.add(s);
   }
   return [...refs].filter(Boolean);
 }
 
-function refExists(ctx: RepoContext, docPath: string, ref: string): boolean {
+/** Build-output directory names: a doc may legitimately mention them before anything is built. */
+const OUTPUT_SEGMENTS = new Set(['node_modules', 'dist', '.next', 'target', 'coverage', '.venv']);
+
+type RefStatus = 'ok' | 'missing' | 'skip';
+
+function dirsOf(ctx: RepoContext): Set<string> {
+  const dirs = new Set<string>();
+  for (const f of ctx.files) {
+    let i = f.indexOf('/');
+    while (i !== -1) {
+      dirs.add(f.slice(0, i));
+      i = f.indexOf('/', i + 1);
+    }
+  }
+  return dirs;
+}
+
+function refStatus(
+  ctx: RepoContext,
+  docPath: string,
+  ref: string,
+  dirs: () => Set<string>,
+): RefStatus {
   const clean = ref.replace(/\/$/, '');
-  if (ctx.exists(clean)) return true;
+  if (ctx.exists(clean)) return 'ok';
   const rel = posix.normalize(posix.join(dirname(docPath), clean));
-  if (!rel.startsWith('..') && ctx.exists(rel)) return true;
-  // Bare filenames (`index.ts`) are usually mentioned in the context of some directory.
-  if (!clean.includes('/')) return ctx.files.some((f) => f === clean || f.endsWith(`/${clean}`));
-  return false;
+  if (!rel.startsWith('..') && ctx.exists(rel)) return 'ok';
+  // Monorepo docs often use package-relative paths (`src/cli/main.ts` for `packages/x/src/cli/main.ts`).
+  const suffix = `/${clean}`;
+  if (ctx.files.some((f) => f === clean || f.endsWith(suffix))) return 'ok';
+  if (dirs().has(clean)) return 'ok';
+  for (const d of dirs()) if (d.endsWith(suffix)) return 'ok';
+  // Paths the docs expect to be created by a build or local run.
+  if (clean.split('/').some((seg) => OUTPUT_SEGMENTS.has(seg))) return 'skip';
+  if (ctx.isIgnored(clean) || (!rel.startsWith('..') && ctx.isIgnored(rel))) return 'skip';
+  // Only anchored references count as stale: `a/b/c.ts` where `a/` is a real directory at the root
+  // or next to the doc. Unanchored `a/b` is far more likely an import specifier (`next/font`),
+  // `owner/repo` or a model id. A bare data file (`manifest.json`) is usually a runtime artifact;
+  // bare source/markdown names (`gone.ts`) are still checked.
+  const docDir = dirname(docPath);
+  if (clean.includes('/')) {
+    const first = clean.split('/')[0] ?? '';
+    const anchored = dirs().has(first) || (docDir !== '.' && dirs().has(posix.join(docDir, first)));
+    if (!anchored) return 'skip';
+  } else if (
+    ref.endsWith('/') ||
+    /\.(?:json|jsonl|ya?ml|toml|txt|log|lock|csv|ini|cfg)$/i.test(clean)
+  ) {
+    return 'skip';
+  }
+  return 'missing';
 }
 
 /** The doc an append-fix should target: AGENTS.md first, then CLAUDE.md, then any root markdown doc. */
@@ -335,10 +384,21 @@ export const contextChecks: Check[] = [
       const findings: Finding[] = [];
       let total = 0;
       const scripts = ctx.scripts();
+      let dirCache: Set<string> | null = null;
+      const dirs = () => {
+        dirCache ??= dirsOf(ctx);
+        return dirCache;
+      };
+      // CLAUDE.md is often a symlink or copy of AGENTS.md; don't report the same stale line twice.
+      const seenContent = new Set<string>();
       for (const d of docs) {
+        if (seenContent.has(d.content)) continue;
+        seenContent.add(d.content);
         for (const ref of extractPathRefs(d.content)) {
+          const status = refStatus(ctx, d.path, ref, dirs);
+          if (status === 'skip') continue;
           total++;
-          if (!refExists(ctx, d.path, ref)) {
+          if (status === 'missing') {
             findings.push({
               severity: 'warn',
               file: d.path,
@@ -347,7 +407,10 @@ export const contextChecks: Check[] = [
           }
         }
         if (ctx.pkg) {
+          const deps = ctx.allDeps();
           for (const s of extractScriptRefs(d.content)) {
+            // `pnpm prettier` / `yarn tsc` run a dependency's binary, not a script.
+            if (s in deps) continue;
             total++;
             if (!(s in scripts)) {
               findings.push({

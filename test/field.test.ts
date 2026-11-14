@@ -131,3 +131,86 @@ describe('dangerous scripts', () => {
     expect(check(r, 'safety.scripts').score).toBeLessThan(1);
   });
 });
+
+describe('context docs: staleness and discovery', () => {
+  const agents = (body: string) => ['# AGENTS.md', '', '## Architecture', '', body, ''].join('\n');
+
+  it('resolves monorepo-relative, gitignored and build-output paths', async () => {
+    const r = await scan(
+      fixture('good-ts', {
+        git: true,
+        files: {
+          'packages/core/src/cli/main.ts': 'export {};\n',
+          '.gitignore': 'node_modules/\ndist/\n.cache-local/\n',
+          'AGENTS.md': agents(
+            'Entry: `src/cli/main.ts` (in `packages/core`). Output goes to `packages/core/dist/` and `.cache-local/run.json`.',
+          ),
+        },
+      }),
+    );
+    const f = check(r, 'context.fresh');
+    expect(f.findings ?? []).toEqual([]);
+  });
+
+  it('skips import specifiers, owner/repo names, hosts and bare extensions', async () => {
+    const md = agents(
+      [
+        'Use `next/font` and `zod/mini`; upstream is `vercel/next.js` and `cli/cli`.',
+        'Module path `github.com/acme/tool/v2`. Applies to `.ts` and `.tsx` files.',
+        'The run writes `manifest.json` and `.opencode/`.',
+      ].join('\n'),
+    );
+    const r = await scan(fixture('good-ts', { git: true, files: { 'AGENTS.md': md } }));
+    expect(check(r, 'context.fresh').findings ?? []).toEqual([]);
+  });
+
+  it('still flags stale paths under real directories', async () => {
+    const md = agents('Main logic lives in `src/legacy/old-entry.ts`; see `docs/GUIDE.md`.');
+    const r = await scan(
+      fixture('good-ts', { git: true, files: { 'AGENTS.md': md, 'docs/intro.md': '# x\n' } }),
+    );
+    const msgs = (check(r, 'context.fresh').findings ?? []).map((f) => f.message);
+    expect(msgs).toEqual([
+      'references missing path `src/legacy/old-entry.ts`',
+      'references missing path `docs/GUIDE.md`',
+    ]);
+  });
+
+  it('counts a duplicated CLAUDE.md (symlink/copy of AGENTS.md) once', async () => {
+    const md = agents('See `src/legacy/gone.ts`.');
+    const r = await scan(
+      fixture('good-ts', { git: true, files: { 'AGENTS.md': md, 'CLAUDE.md': md } }),
+    );
+    expect(check(r, 'context.fresh').findings).toHaveLength(1);
+  });
+
+  it('does not treat `pnpm <dependency-bin>` as a missing script', async () => {
+    const pkg = { name: 'x', scripts: { test: 'vitest' }, devDependencies: { prettier: '3' } };
+    const md = agents('```bash\npnpm prettier --write .\n```');
+    const r = await scan(
+      fixture('good-ts', {
+        git: true,
+        files: { 'package.json': JSON.stringify(pkg), 'AGENTS.md': md },
+      }),
+    );
+    expect(check(r, 'context.fresh').findings ?? []).toEqual([]);
+  });
+
+  it('does not count nested workflow docs under .github/ as repo-wide docs', async () => {
+    const r = await scan(
+      fixture(null, {
+        git: true,
+        files: { 'index.js': '', '.github/workflows/AGENTS.md': agents('Workflow notes.') },
+      }),
+    );
+    expect(check(r, 'context.exists').score).toBe(0);
+  });
+
+  it('detects commands run through any task runner', async () => {
+    const { detectCommands } = await import('../src/checks/context-docs.js');
+    const md = '- `nub run build`\n- `nub exec --node vitest run`\n- `mise run lint`';
+    expect([...detectCommands(md)].sort()).toEqual(['build', 'lint', 'test']);
+    expect(detectCommands('```\ncargo clippy --workspace\n```').has('lint')).toBe(true);
+    expect(detectCommands('`./runtests.py admin_views`').has('test')).toBe(true);
+  });
+});
