@@ -1,0 +1,13 @@
+[project]
+name = "inventory"
+description = "Typed inventory service"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+strict = true

