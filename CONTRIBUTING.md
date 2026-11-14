@@ -49,3 +49,36 @@ Requires Node 20+. There are **no runtime dependencies** and we'd like to keep i
 ## Commits & PRs
 
 Small, focused PRs with a test. Run `npm run check` before pushing.
+
+## Demo GIF
+
+`npm run demo:gif` rebuilds `docs/demo.gif` (and the still `docs/demo.png`) from the real CLI
+running on a synthetic repo generated in a temp dir. It needs Google Chrome (driven by Playwright,
+`channel: 'chrome'`) and `ffmpeg` (on `PATH`, at `/opt/homebrew/bin/ffmpeg`, or set `FFMPEG`).
+Re-run it whenever the terminal output changes.
+
+## Releasing
+
+Releases are tagged `vX.Y.Z` (annotated). The GitHub Action is consumed via a moving major tag
+(`uses: ranjan-mohanty/agent-ready@v0`), and by default it runs the npm version in `package.json`
+at that tag, so **publish to npm before moving the tag**.
+
+1. Bump `version` in `package.json` (`src/version.ts` reads it at runtime), update `CHANGELOG.md`, commit.
+2. `npm run check && npm run build && npm pack --dry-run` and sanity-check the file list.
+3. Tag and publish:
+
+   ```bash
+   git tag -a v0.2.0 -m "agent-ready v0.2.0"
+   npm publish
+   git push origin main v0.2.0
+   ```
+
+4. Move the major tag to the same commit and force-push it:
+
+   ```bash
+   git tag -fa v0 -m "agent-ready v0 -> v0.2.0" v0.2.0^{commit}
+   git push origin v0 --force
+   ```
+
+   Only move `v0` for backwards-compatible releases. A breaking change to the action's inputs or
+   outputs (or a 1.0) gets a new major tag (`v1`) instead.

@@ -11,8 +11,10 @@ inputs:
     description: Fail if the score is below this (0-100)
     default: "0"
   version:
-    description: agent-ready version to run
-    default: latest
+    description: >-
+      agent-ready npm version to run. Defaults to the version of the action ref you use
+      (e.g. @v0.1.0 runs agent-ready@0.1.0), so pinning the action pins the CLI.
+    default: ""
 outputs:
   score:
     description: The agent-ready score (0-100)
@@ -27,11 +29,16 @@ runs:
         AR_MIN: ${{ inputs.min-score }}
         AR_VERSION: ${{ inputs.version }}
       run: |
+        if [ -z "$AR_VERSION" ]; then
+          AR_VERSION=$(node -p 'require(process.argv[1]).version' "$GITHUB_ACTION_PATH/package.json")
+        fi
+        echo "Running agent-ready@${AR_VERSION}"
         npx --yes "agent-ready@${AR_VERSION}" "$AR_PATH" --json > "$RUNNER_TEMP/agent-ready.json"
         npx --yes "agent-ready@${AR_VERSION}" "$AR_PATH"
         SCORE=$(node -e 'console.log(require(process.argv[1]).score)' "$RUNNER_TEMP/agent-ready.json")
         echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         echo "### agent-ready: $SCORE/100" >> "$GITHUB_STEP_SUMMARY"
+        npx --yes "agent-ready@${AR_VERSION}" "$AR_PATH" --badge >> "$GITHUB_STEP_SUMMARY"
         if [ "$SCORE" -lt "$AR_MIN" ]; then
           echo "::error::agent-ready score $SCORE is below $AR_MIN"
           exit 1
