@@ -47,7 +47,7 @@ misfired on a real repo became a regression test, using synthetic snippets.
 ## GitHub Action
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
 - uses: ranjan-mohanty/agent-ready@v0
   with: { min-score: 75 }
 ```

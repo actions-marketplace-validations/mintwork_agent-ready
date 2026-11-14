@@ -6,9 +6,12 @@
 Score how well Claude Code, Codex and Cursor can work in your repo — then auto-fix the gaps.
 
 [![agent-ready: 100/100](https://img.shields.io/badge/agent--ready-100%2F100-brightgreen)](https://github.com/ranjan-mohanty/agent-ready)
-[![CI](https://img.shields.io/badge/CI-GitHub_Actions-blue)](.github/workflows/ci.yml)
+[![CI](https://github.com/ranjan-mohanty/agent-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/ranjan-mohanty/agent-ready/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/agent-ready?color=cb3837&logo=npm)](https://www.npmjs.com/package/agent-ready)
+[![npm downloads](https://img.shields.io/npm/dm/agent-ready?color=cb3837)](https://www.npmjs.com/package/agent-ready)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![zero dependencies](https://img.shields.io/badge/runtime_deps-0-brightgreen)](package.json)
+[![GitHub stars](https://img.shields.io/github/stars/ranjan-mohanty/agent-ready?style=social)](https://github.com/ranjan-mohanty/agent-ready/stargazers)
 
 <img src="docs/demo.gif" alt="agent-ready scoring a repo at 59/100, running --fix to reach 78/100, then printing a README badge" width="900">
 
@@ -161,8 +164,8 @@ jobs:
   agent-ready:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 20 }
       - run: npx --yes agent-ready@latest . --min-score 75
 ```

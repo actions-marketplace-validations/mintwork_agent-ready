@@ -59,26 +59,25 @@ Re-run it whenever the terminal output changes.
 
 ## Releasing
 
-Releases are tagged `vX.Y.Z` (annotated). The GitHub Action is consumed via a moving major tag
+Releases are tagged `vX.Y.Z`. The GitHub Action is consumed via the moving major tag
 (`uses: ranjan-mohanty/agent-ready@v0`), and by default it runs the npm version in `package.json`
-at that tag, so **publish to npm before moving the tag**.
+at that tag. The [release workflow](.github/workflows/release.yml) handles both: publishing a
+GitHub Release publishes to npm (with provenance) **and then** moves `v0`.
 
-1. Bump `version` in `package.json` (`src/version.ts` reads it at runtime), update `CHANGELOG.md`, commit.
+1. Bump `version` in `package.json` (`src/version.ts` reads it at runtime), update `CHANGELOG.md`,
+   add `docs/release-notes-vX.Y.Z.md`, commit and push.
 2. `npm run check && npm run build && npm pack --dry-run` and sanity-check the file list.
-3. Tag and publish:
+3. Create the release; the workflow checks that the tag matches `package.json`, runs the checks,
+   publishes to npm and moves `v0`:
 
    ```bash
-   git tag -a v0.2.0 -m "agent-ready v0.2.0"
-   npm publish
-   git push origin main v0.2.0
+   gh release create v0.2.0 --title "agent-ready v0.2.0" --notes-file docs/release-notes-v0.2.0.md
    ```
 
-4. Move the major tag to the same commit and force-push it:
+Only backwards-compatible releases should move `v0`. For a breaking change to the action's inputs
+or outputs (or a 1.0), change the major tag in the release workflow to `v1` first.
 
-   ```bash
-   git tag -fa v0 -m "agent-ready v0 -> v0.2.0" v0.2.0^{commit}
-   git push origin v0 --force
-   ```
-
-   Only move `v0` for backwards-compatible releases. A breaking change to the action's inputs or
-   outputs (or a 1.0) gets a new major tag (`v1`) instead.
+**npm auth:** the workflow uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
+(configure `ranjan-mohanty/agent-ready` + `release.yml` on the package's npm settings page), or
+an `NPM_TOKEN` repository secret as a fallback. If a version is already on npm (for example the
+first release, published by hand), the publish step is skipped.
