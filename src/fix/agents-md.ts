@@ -158,7 +158,7 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
   });
 }
 
-/** The top-level directory holding the Python package (`fastapi/`, `src/pkg/`), if obvious. */
+/** The top-level directory holding the Python package (`my_pkg/`, `src/my_pkg/`), if obvious. */
 function pythonPackageDir(ctx: RepoContext): string | null {
   const name = ctx.pyproject?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
   if (!name) return null;

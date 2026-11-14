@@ -225,7 +225,7 @@ function preStatus(
   // Paths the docs expect to be created by a build or local run.
   if (clean.split('/').some((seg) => OUTPUT_SEGMENTS.has(seg))) return 'skip';
   // Only anchored references count as stale: `a/b/c.ts` where `a/` is a real directory at the root
-  // or next to the doc. Unanchored `a/b` is far more likely an import specifier (`next/font`),
+  // or next to the doc. Unanchored `a/b` is far more likely an import specifier (`ui-kit/button`),
   // `owner/repo` or a model id. A bare data file (`manifest.json`) is usually a runtime artifact;
   // bare source/markdown names (`gone.ts`) are still checked.
   const docDir = dirname(docPath);

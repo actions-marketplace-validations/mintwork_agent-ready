@@ -156,7 +156,7 @@ describe('context docs: staleness and discovery', () => {
   it('skips import specifiers, owner/repo names, hosts and bare extensions', async () => {
     const md = agents(
       [
-        'Use `next/font` and `zod/mini`; upstream is `vercel/next.js` and `cli/cli`.',
+        'Use `ui-kit/button` and `schema/mini`; upstream is `acme/widget.js` and `acme/cli`.',
         'Module path `github.com/acme/tool/v2`. Applies to `.ts` and `.tsx` files.',
         'The run writes `manifest.json` and `.opencode/`.',
       ].join('\n'),
