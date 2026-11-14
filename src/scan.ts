@@ -74,7 +74,7 @@ export async function scanContext(ctx: RepoContext, opts: ScanOptions = {}): Pro
       id: check.id,
       category: check.category,
       title: check.title,
-      weight: check.weight,
+      weight: check.weight * Math.max(0.05, Math.min(1, result.weightScale ?? 1)),
       fixable: Boolean(check.fix) && score !== null && score < 1,
       durationMs: Date.now() - t0,
     });

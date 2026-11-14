@@ -354,3 +354,91 @@ describe('type safety: python hints and monorepo tsconfigs', () => {
     expect(check(noScript, 'feedback.typecheck').summary).toMatch(/tsconfig.json but no typecheck/);
   });
 });
+
+describe('secrets: more demo values', () => {
+  it('treats a redaction expectation on the following line as a test value', async () => {
+    const src = `const cases = [\n  [\n    'Bearer ${FAKE_AWS_KEY}',\n    'Bearer [REDACTED]',\n  ],\n];\n`;
+    const r = await scan(fixture('good-ts', { git: true, files: { 'src/cases.ts': src } }));
+    expect(check(r, 'safety.secrets').score).toBe(1);
+  });
+
+  it('does not penalise example .env files or public browser keys', async () => {
+    const r = await scan(
+      fixture('good-ts', {
+        git: true,
+        files: {
+          'examples/passport/.env': 'TOKEN_SECRET="q8Zr2LmN0pW4-long-demo-value"\n',
+          '.env.development': 'NEXT_PUBLIC_SEARCH_API_KEY=a63da4c1b2e9f0\n',
+        },
+      }),
+    );
+    expect(check(r, 'safety.secrets').score).toBe(1);
+  });
+});
+
+describe('Go and Rust repos (previously n/a or mis-detected)', () => {
+  const goRepo = (extra: Record<string, string> = {}) => {
+    const files: Record<string, string> = {
+      'go.mod': 'module example.com/tool\n\ngo 1.22\n',
+      'README.md': `# tool\n${'\nusage line'.repeat(10)}\n`,
+      ...extra,
+    };
+    for (let i = 0; i < 20; i++) {
+      files[`pkg/m${i}/m.go`] = `package m${i}\n\nfunc F() int { return ${i} }\n`;
+      files[`pkg/m${i}/m_test.go`] =
+        `package m${i}\n\nimport "testing"\n\nfunc TestF(t *testing.T) {}\n`;
+    }
+    return files;
+  };
+
+  it('a few bundled JS assets do not make a Go repo "plain JavaScript"', async () => {
+    const r = await scan(
+      fixture(null, {
+        git: true,
+        files: goRepo({
+          'docs/assets/app.js': 'console.log(1);\n',
+          'docs/assets/menu.js': 'console.log(2);\n',
+          'docs/assets/search.js': 'console.log(3);\n',
+        }),
+      }),
+    );
+    expect(r.languages).toEqual(['go']);
+    expect(check(r, 'types.typescript').score).toBeNull();
+    expect(check(r, 'types.static').score).toBe(1);
+    expect(check(r, 'feedback.test').summary).toMatch(/go test/);
+    expect(check(r, 'feedback.lint').score).toBeCloseTo(0.6);
+  });
+
+  it('scores a Rust repo on cargo, and a tooling package.json barely moves it', async () => {
+    const files: Record<string, string> = {
+      'Cargo.toml': '[package]\nname = "tool"\n\n[lints.clippy]\npedantic = "warn"\n',
+      'package.json': JSON.stringify({ name: 'tooling', devDependencies: { prettier: '3' } }),
+      'tests/cli.rs': '#[test]\nfn works() {}\n',
+    };
+    for (let i = 0; i < 30; i++) files[`src/m${i}.rs`] = `pub fn f() -> u32 { ${i} }\n`;
+    const r = await scan(fixture(null, { git: true, files }));
+    expect(r.languages).toContain('rust');
+    const test = check(r, 'feedback.test');
+    expect(test.summary).toMatch(/cargo test/);
+    // JS part (no test script) is weighted by its tiny share of the code
+    expect(test.score).toBeGreaterThan(0.85);
+    expect(check(r, 'feedback.lint').summary).toMatch(/clippy/);
+    expect(check(r, 'feedback.typecheck').score).toBe(1);
+  });
+
+  it('weights per-language type checks by code share', async () => {
+    const files: Record<string, string> = {
+      'pyproject.toml': '[project]\nname = "x"\n',
+      'web/app.js': 'module.exports = 1;\n',
+      'web/b.js': 'module.exports = 2;\n',
+      'web/c.js': 'module.exports = 3;\n',
+      'package.json': '{"name":"web"}',
+    };
+    for (let i = 0; i < 27; i++) files[`pkg/m${i}.py`] = 'def f(x: int) -> int:\n    return x\n';
+    const r = await scan(fixture(null, { git: true, files }));
+    const js = check(r, 'types.typescript');
+    const py = check(r, 'types.python');
+    expect(js.weight).toBeLessThan(py.weight);
+    expect(r.categories.find((c) => c.id === 'types')?.score).toBeGreaterThan(70);
+  });
+});

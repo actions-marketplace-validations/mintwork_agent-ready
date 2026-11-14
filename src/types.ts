@@ -19,6 +19,11 @@ export interface CheckResult {
   findings?: Finding[];
   /** Short actionable advice shown when the check is not passing. */
   suggestion?: string;
+  /**
+   * Optional multiplier (0..1] on the check's weight for this repo, e.g. the share of the code
+   * written in the language the check is about.
+   */
+  weightScale?: number;
 }
 
 export interface FileChange {

@@ -71,6 +71,8 @@ function softEnvFinding(f: string, text: string): Finding | null {
     if (!m) continue;
     const key = m[1] ?? '';
     const value = (m[2] ?? '').trim().replace(/^['"]|['"]$/g, '');
+    // NEXT_PUBLIC_/VITE_/PUBLIC_ values are shipped to the browser by design.
+    if (/^(?:NEXT_PUBLIC|VITE|PUBLIC|EXPO_PUBLIC|REACT_APP|NUXT_PUBLIC)_/.test(key)) continue;
     if (
       SECRET_KEY_NAME.test(key) &&
       value.length >= 6 &&
@@ -94,7 +96,9 @@ function softEnvFinding(f: string, text: string): Finding | null {
  */
 function testish(f: string, text: string, index: number): boolean {
   if (isTestPath(f)) return true;
-  const lineEnd = text.indexOf('\n', index);
+  // Look at the matching line, the three before it and the one after it.
+  const eol = text.indexOf('\n', index);
+  const lineEnd = eol === -1 ? -1 : text.indexOf('\n', eol + 1);
   let ctxStart = index;
   for (let i = 0; i < 3 && ctxStart > 0; i++) ctxStart = text.lastIndexOf('\n', ctxStart - 1);
   return TEST_CONTEXT.test(text.slice(Math.max(0, ctxStart), lineEnd === -1 ? undefined : lineEnd));
@@ -124,7 +128,8 @@ export function scanSecrets(ctx: RepoContext): Finding[] {
     if (softEnv) {
       if (TEMPLATE_ENV_FILE.test(f)) continue;
       const soft = softEnvFinding(f, ctx.read(f) ?? '');
-      if (soft) findings.push(isTestPath(f) ? { ...soft, severity: 'info' } : soft);
+      const demo = isTestPath(f) || isExamplePath(f);
+      if (soft) findings.push(demo ? { ...soft, severity: 'info' } : soft);
       continue;
     }
     if (fileRule && !fileRule.content) {

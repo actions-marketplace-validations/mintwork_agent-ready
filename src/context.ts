@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { UserConfig } from './types.js';
 import { Matcher, parseIgnoreFile } from './util/glob.js';
 import { parseJsonc } from './util/jsonc.js';
+import { isFixturePath } from './util/paths.js';
 
 /** Directories that are always build output / dependency caches and never source. */
 export const HEAVY_DIRS = [
@@ -26,7 +27,7 @@ export const HEAVY_DIRS = [
 
 const MAX_FILES = 50_000;
 
-export type Language = 'typescript' | 'javascript' | 'python';
+export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust';
 
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
@@ -52,6 +53,13 @@ export interface RepoContext {
   trackedHeavy: string[];
   truncated: boolean;
   languages: Language[];
+  /** Number of (non-fixture, non-vendored) code files per detected language. */
+  codeFiles: Partial<Record<Language, number>>;
+  /**
+   * Share (0..1) of the detected languages' code written in the given language(s). Used to weight
+   * per-language checks so a tooling package.json doesn't count as much as the main language.
+   */
+  share(...langs: Language[]): number;
   pkg: PackageJson | null;
   pyproject: string | null;
   packageManager: PackageManager;
@@ -264,25 +272,53 @@ export function createContext(rootInput: string): RepoContext {
   const pyproject = read('pyproject.toml');
 
   // A language counts if it has a manifest, or makes up a meaningful share of the code
-  // (a couple of helper scripts don't make a JS repo a Python project).
-  const languages: Language[] = [];
-  const tsFiles = filesWithExt('.ts', '.tsx', '.mts', '.cts').filter((f) => !f.endsWith('.d.ts'));
-  const jsFiles = filesWithExt('.js', '.jsx', '.mjs', '.cjs');
-  const pyFiles = filesWithExt('.py');
-  const codeTotal = tsFiles.length + jsFiles.length + pyFiles.length;
+  // (a couple of helper scripts don't make a JS repo a Python project). Fixtures and vendored
+  // code don't count towards the share.
+  const counted = files.filter(
+    (f) => !isFixturePath(f) && !/(^|\/)(vendor|third[-_]party)\//.test(f),
+  );
+  const countExt = (re: RegExp) => counted.filter((f) => re.test(f)).length;
+  const tsCount = countExt(/\.(?:ts|tsx|mts|cts)$/) - countExt(/\.d\.ts$/);
+  const jsCount = countExt(/\.(?:js|jsx|mjs|cjs)$/);
+  const pyCount = countExt(/\.py$/);
+  const goCount = countExt(/\.go$/);
+  const rsCount = countExt(/\.rs$/);
+  const otherCount = countExt(/\.(?:java|kt|scala|c|cc|cpp|h|hpp|cs|rb|php|swift|m|zig|ex|exs)$/);
+  const codeTotal = tsCount + jsCount + pyCount + goCount + rsCount + otherCount;
   const significant = (n: number) =>
     n > 0 && (n >= Math.max(3, codeTotal * 0.1) || n === codeTotal);
-  const hasTsconfig = files.some((f) => /(^|\/)tsconfig(\.[\w-]+)?\.json$/.test(f));
+  const hasTsconfig = files.some(
+    (f) => /(^|\/)tsconfig(\.[\w-]+)?\.json$/.test(f) && !isFixturePath(f),
+  );
   const pyManifest =
     pyproject !== null ||
     fileSet.has('setup.py') ||
     fileSet.has('requirements.txt') ||
     fileSet.has('Pipfile');
-  if (hasTsconfig || significant(tsFiles.length)) languages.push('typescript');
-  if (significant(jsFiles.length) || (pkg && !languages.includes('typescript'))) {
+  const languages: Language[] = [];
+  if (hasTsconfig || significant(tsCount)) languages.push('typescript');
+  if (significant(jsCount) || (pkg && !languages.includes('typescript'))) {
     languages.push('javascript');
   }
-  if (pyManifest || significant(pyFiles.length)) languages.push('python');
+  if (pyManifest || significant(pyCount)) languages.push('python');
+  if (fileSet.has('go.mod') || significant(goCount)) languages.push('go');
+  if (fileSet.has('Cargo.toml') || significant(rsCount)) languages.push('rust');
+  const codeFiles: Partial<Record<Language, number>> = {};
+  const counts: Record<Language, number> = {
+    typescript: tsCount,
+    javascript: jsCount,
+    python: pyCount,
+    go: goCount,
+    rust: rsCount,
+  };
+  for (const l of languages) codeFiles[l] = counts[l];
+  const detectedTotal = languages.reduce((n, l) => n + counts[l], 0);
+  const share = (...langs: Language[]): number => {
+    const present = langs.filter((l) => languages.includes(l));
+    if (present.length === 0) return 0;
+    if (detectedTotal === 0) return present.length / languages.length;
+    return present.reduce((n, l) => n + counts[l], 0) / detectedTotal;
+  };
 
   return {
     root,
@@ -291,6 +327,8 @@ export function createContext(rootInput: string): RepoContext {
     trackedHeavy,
     truncated,
     languages,
+    codeFiles,
+    share,
     pkg,
     pyproject,
     packageManager: detectPackageManager(root, pkg),

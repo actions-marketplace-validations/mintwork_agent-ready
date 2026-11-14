@@ -90,6 +90,23 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
     else if (pyHas(ctx, 'tool.pyright') || ctx.has('pyrightconfig.json'))
       cmds.push({ label: 'Typecheck', cmd: `${run}pyright` });
   }
+  if (ctx.languages.includes('rust') && ctx.has('Cargo.toml')) {
+    cmds.push({ label: 'Build (Rust)', cmd: 'cargo build' });
+    cmds.push({ label: 'Run tests (Rust)', cmd: 'cargo test' });
+    cmds.push({ label: 'Lint (Rust)', cmd: 'cargo clippy --all-targets' });
+    cmds.push({ label: 'Format (Rust)', cmd: 'cargo fmt' });
+  }
+  if (ctx.languages.includes('go') && ctx.has('go.mod')) {
+    cmds.push({ label: 'Build (Go)', cmd: 'go build ./...' });
+    if (ctx.files.some((f) => f.endsWith('_test.go')))
+      cmds.push({ label: 'Run tests (Go)', cmd: 'go test ./...' });
+    const golangci = ctx.files.some((f) => /^\.golangci\.(ya?ml|toml|json)$/.test(f));
+    cmds.push(
+      golangci
+        ? { label: 'Lint (Go)', cmd: 'golangci-lint run' }
+        : { label: 'Vet (Go)', cmd: 'go vet ./...' },
+    );
+  }
   const makefile = ctx.read('Makefile');
   if (makefile && cmds.length <= 1) {
     for (const target of ['build', 'test', 'lint', 'check']) {
@@ -152,9 +169,14 @@ export function architectureSection(ctx: RepoContext): string[] {
 export function generateAgentsMd(ctx: RepoContext): string {
   const name = projectName(ctx);
   const desc = projectDescription(ctx);
-  const langs = ctx.languages.map((l) =>
-    l === 'typescript' ? 'TypeScript' : l === 'javascript' ? 'JavaScript' : 'Python',
-  );
+  const LABELS: Record<string, string> = {
+    typescript: 'TypeScript',
+    javascript: 'JavaScript',
+    python: 'Python',
+    go: 'Go',
+    rust: 'Rust',
+  };
+  const langs = ctx.languages.map((l) => LABELS[l] ?? l);
   const lines: string[] = [];
   lines.push('# AGENTS.md', '');
   lines.push(

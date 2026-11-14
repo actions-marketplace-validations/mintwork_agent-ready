@@ -100,7 +100,7 @@ npx agent-ready            # no install
 npm i -D agent-ready       # or pin it in your project
 ```
 
-Node 20+. Zero runtime dependencies. Works on JS/TS and Python repos. Read-only unless you pass `--fix`.
+Node 20+. Zero runtime dependencies. Works on JS/TS and Python repos, with basic Go and Rust support. Read-only unless you pass `--fix`.
 
 ## Usage
 
@@ -127,12 +127,15 @@ missing sections in your context doc). It never rewrites content you wrote unles
 | Category           | Weight | Checks                                                                                                                                                                                                                                                                                                                                                   |
 | ------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Context docs**   | 30%    | `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / Copilot / Gemini instructions exist · they list exact build, test and lint commands · they describe architecture and key directories · **not stale**: every referenced path and `npm run` script actually exists · not too long (or too thin) · both `AGENTS.md` and `CLAUDE.md` so every agent is covered |
-| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`) · linter configured (eslint, biome, oxlint, ruff, flake8) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast                                                                                                                  |
+| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast                                                                  |
 | **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                             |
-| **Type safety**    | 15%    | TypeScript `strict` (follows `extends`), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage estimate + mypy/pyright config                                                                                                                                                                                    |
+| **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                             |
 | **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                |
 
 Checks that don't apply (e.g. Python checks in a TS repo) are marked n/a and excluded from the score.
+In polyglot repos, per-language parts are weighted by each language's share of the code, so a tooling
+`package.json` in a Rust repo doesn't count as much as the Rust itself. Secrets in tests, fixtures and
+examples are listed (with `--verbose`) but don't lower the score.
 "Agent-visible" means what ripgrep-based agents actually see: `git ls-files` minus anything in
 `.gitignore`, `.ignore`, `.rgignore` or `.cursorignore`.
 
@@ -198,7 +201,7 @@ whatever `npm run build` does.
 
 ## Roadmap
 
-- [ ] Go, Rust and Java/Kotlin support
+- [ ] Deeper Go and Rust checks (unsafe/`interface{}` density, nested `Cargo.toml` workspaces) and Java/Kotlin support
 - [ ] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
 - [ ] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
 - [ ] Doc staleness via git history (doc untouched while referenced code churned)

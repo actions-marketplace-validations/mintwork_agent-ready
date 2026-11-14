@@ -307,6 +307,7 @@ export const typeSafetyChecks: Check[] = [
           const jsconfig = ctx.readJson<TsConfig>('jsconfig.json');
           const checkJs = jsconfig?.compilerOptions?.checkJs === true;
           return {
+            weightScale: ctx.share('javascript'),
             score: checkJs ? 0.6 : 0.25,
             summary: checkJs
               ? 'JavaScript with checkJs enabled'
@@ -321,6 +322,7 @@ export const typeSafetyChecks: Check[] = [
       const strictOn = r.summary.startsWith('strict mode on (');
       return {
         ...r,
+        weightScale: ctx.share('typescript', 'javascript'),
         suggestion:
           r.score < 1
             ? strictOn
@@ -340,10 +342,26 @@ export const typeSafetyChecks: Check[] = [
       const r = pyCheck(ctx);
       return {
         ...r,
+        weightScale: ctx.share('python'),
         suggestion:
           r.score < 0.9
             ? 'Annotate function signatures and configure mypy or pyright in pyproject.toml.'
             : undefined,
+      };
+    },
+  },
+  {
+    id: 'types.static',
+    category: 'types',
+    title: 'Compiler-checked types (Go/Rust)',
+    weight: 1,
+    run(ctx): CheckResult {
+      const langs = (['rust', 'go'] as const).filter((l) => ctx.languages.includes(l));
+      if (langs.length === 0) return { score: null, summary: 'No Go/Rust' };
+      return {
+        score: 1,
+        weightScale: ctx.share(...langs),
+        summary: `${langs.map((l) => (l === 'rust' ? 'Rust' : 'Go')).join(' + ')}: statically typed, checked by the compiler`,
       };
     },
   },

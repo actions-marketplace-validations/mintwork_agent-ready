@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { type RepoContext, runScriptCmd } from '../context.js';
+import { type Language, type RepoContext, runScriptCmd } from '../context.js';
 import type { Check, CheckResult } from '../types.js';
 import { projectTsconfigs } from './type-safety.js';
 
@@ -64,11 +64,54 @@ export function testCommand(ctx: RepoContext): string | null {
     if (ctx.has('poetry.lock')) return 'poetry run pytest -q';
     return 'python3 -m pytest -q';
   }
+  if (hasRust(ctx) && ctx.has('Cargo.toml')) return 'cargo test';
+  if (hasGo(ctx) && ctx.has('go.mod')) return 'go test ./...';
   return null;
 }
 
-function avg(xs: number[]): number | null {
-  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+/** Per-language part of a check: its score and how much of the codebase it covers. */
+type Part = [score: number, weight: number];
+
+const MIN_PART_WEIGHT = 0.15;
+
+function part(ctx: RepoContext, score: number, ...langs: Language[]): Part {
+  return [score, Math.max(MIN_PART_WEIGHT, ctx.share(...langs))];
+}
+
+/** Weighted mean of the language parts, so a tooling package.json in a Rust repo counts little. */
+function avg(parts: Part[]): number | null {
+  const w = parts.reduce((n, [, pw]) => n + pw, 0);
+  return parts.length ? parts.reduce((n, [ps, pw]) => n + ps * pw, 0) / w : null;
+}
+
+function hasGo(ctx: RepoContext): boolean {
+  return ctx.languages.includes('go');
+}
+
+function hasRust(ctx: RepoContext): boolean {
+  return ctx.languages.includes('rust');
+}
+
+/** CI workflow + task runner text, for tools that are configured by being invoked (clippy, golangci-lint). */
+function automationText(ctx: RepoContext): string {
+  return [
+    ...ctx.files.filter(
+      (f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(f) || f === '.gitlab-ci.yml',
+    ),
+    'Makefile',
+    'justfile',
+    '.pre-commit-config.yaml',
+  ]
+    .map((f) => ctx.read(f) ?? '')
+    .join('\n');
+}
+
+function rustHasTests(ctx: RepoContext): boolean {
+  const rs = ctx.filesWithExt('.rs');
+  if (rs.some((f) => /(^|\/)tests\/[^/]+\.rs$|(^|\/)tests?\.rs$|_tests?\.rs$/.test(f))) return true;
+  return rs
+    .slice(0, 400)
+    .some((f) => /#\[(?:test|cfg\(test\)|tokio::test)/.test(ctx.read(f) ?? ''));
 }
 
 export const feedbackChecks: Check[] = [
@@ -78,7 +121,7 @@ export const feedbackChecks: Check[] = [
     title: 'Test command is discoverable',
     weight: 4,
     run(ctx): CheckResult {
-      const parts: number[] = [];
+      const parts: Part[] = [];
       const notes: string[] = [];
       if (hasJs(ctx)) {
         const deps = ctx.allDeps();
@@ -87,43 +130,53 @@ export const feedbackChecks: Check[] = [
           (f) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(f) || /(^|\/)__tests__\//.test(f),
         );
         if (realTestScript(ctx)) {
-          parts.push(1);
+          parts.push(part(ctx, 1, 'typescript', 'javascript'));
           notes.push(`\`${runScriptCmd(ctx, 'test')}\``);
         } else if (makeTarget(ctx, 'test')) {
-          parts.push(1);
+          parts.push(part(ctx, 1, 'typescript', 'javascript'));
           notes.push('`make test`');
         } else if (framework || testFiles.length) {
-          parts.push(0.4);
+          parts.push(part(ctx, 0.4, 'typescript', 'javascript'));
           notes.push(`tests exist but no "test" script`);
         } else {
-          parts.push(0);
+          parts.push(part(ctx, 0, 'typescript', 'javascript'));
           notes.push('no JS tests');
         }
       }
       if (hasPy(ctx)) {
         const files = pyTestFiles(ctx);
         if (files.length && (pytestConfigured(ctx) || makeTarget(ctx, 'test'))) {
-          parts.push(1);
+          parts.push(part(ctx, 1, 'python'));
           notes.push(`pytest (${files.length} test files)`);
         } else if (files.length) {
-          parts.push(0.75);
+          parts.push(part(ctx, 0.75, 'python'));
           notes.push(`${files.length} test files, no pytest config`);
         } else if (pytestConfigured(ctx)) {
-          parts.push(0.5);
+          parts.push(part(ctx, 0.5, 'python'));
           notes.push('pytest configured but no test files found');
         } else {
-          parts.push(0);
+          parts.push(part(ctx, 0, 'python'));
           notes.push('no Python tests');
         }
       }
+      if (hasRust(ctx)) {
+        const tests = rustHasTests(ctx);
+        parts.push(part(ctx, tests ? 1 : 0.3, 'rust'));
+        notes.push(tests ? '`cargo test`' : '`cargo test` but no Rust tests found');
+      }
+      if (hasGo(ctx)) {
+        const tests = ctx.files.some((f) => f.endsWith('_test.go'));
+        parts.push(part(ctx, tests ? 1 : 0, 'go'));
+        notes.push(tests ? '`go test ./...`' : 'no Go tests');
+      }
       const score = avg(parts);
-      if (score === null) return { score: null, summary: 'No JS/TS or Python project detected' };
+      if (score === null) return { score: null, summary: 'No supported language detected' };
       return {
         score,
         summary: `Tests: ${notes.join('; ')}`,
         suggestion:
           score < 1
-            ? 'Give agents one obvious command to verify their work: a "test" script in package.json, or pytest config in pyproject.toml.'
+            ? 'Give agents one obvious command to verify their work: a "test" script in package.json, pytest config in pyproject.toml, or tests `cargo test` / `go test ./...` can find.'
             : undefined,
       };
     },
@@ -134,7 +187,7 @@ export const feedbackChecks: Check[] = [
     title: 'Linter configured',
     weight: 2,
     run(ctx): CheckResult {
-      const parts: number[] = [];
+      const parts: Part[] = [];
       const notes: string[] = [];
       if (hasJs(ctx)) {
         const deps = ctx.allDeps();
@@ -146,18 +199,18 @@ export const feedbackChecks: Check[] = [
         const oxlint = ctx.has('.oxlintrc.json') || 'oxlint' in deps;
         const tool = eslint ? 'eslint' : biome ? 'biome' : oxlint ? 'oxlint' : null;
         if (tool) {
-          parts.push(scripts.lint ? 1 : 0.8);
+          parts.push(part(ctx, scripts.lint ? 1 : 0.8, 'typescript', 'javascript'));
           notes.push(
             scripts.lint ? `${tool} via "lint" script` : `${tool} configured (no "lint" script)`,
           );
         } else if (scripts.lint) {
-          parts.push(0.8);
+          parts.push(part(ctx, 0.8, 'typescript', 'javascript'));
           notes.push('"lint" script');
         } else if (ctx.files.some((f) => /(^|\/)\.prettierrc/.test(f)) || 'prettier' in deps) {
-          parts.push(0.3);
+          parts.push(part(ctx, 0.3, 'typescript', 'javascript'));
           notes.push('formatter only (prettier)');
         } else {
-          parts.push(0);
+          parts.push(part(ctx, 0, 'typescript', 'javascript'));
           notes.push('no JS linter');
         }
       }
@@ -171,24 +224,46 @@ export const feedbackChecks: Check[] = [
           pyHas(ctx, 'tool.pylint');
         const black = pyHas(ctx, 'tool.black');
         if (ruff || other) {
-          parts.push(1);
+          parts.push(part(ctx, 1, 'python'));
           notes.push(ruff ? 'ruff' : 'flake8/pylint');
         } else if (black) {
-          parts.push(0.3);
+          parts.push(part(ctx, 0.3, 'python'));
           notes.push('formatter only (black)');
         } else {
-          parts.push(0);
+          parts.push(part(ctx, 0, 'python'));
           notes.push('no Python linter');
         }
       }
+      if (hasRust(ctx) || hasGo(ctx)) {
+        const auto = automationText(ctx);
+        if (hasRust(ctx)) {
+          const cargo = ctx.read('Cargo.toml') ?? '';
+          const clippy =
+            ctx.has('clippy.toml') ||
+            ctx.has('.clippy.toml') ||
+            /^\[(?:workspace\.)?lints/m.test(cargo) ||
+            /\bclippy\b/.test(auto);
+          parts.push(part(ctx, clippy ? 1 : 0.7, 'rust'));
+          notes.push(clippy ? 'clippy' : 'clippy available but not configured or run in CI');
+        }
+        if (hasGo(ctx)) {
+          const linter =
+            ctx.files.some((f) => /^\.golangci\.(ya?ml|toml|json)$/.test(f)) ||
+            /\b(golangci-lint|staticcheck)\b/.test(auto);
+          parts.push(part(ctx, linter ? 1 : 0.6, 'go'));
+          notes.push(
+            linter ? 'golangci-lint/staticcheck' : 'only `go vet` (no golangci-lint config)',
+          );
+        }
+      }
       const score = avg(parts);
-      if (score === null) return { score: null, summary: 'No JS/TS or Python project detected' };
+      if (score === null) return { score: null, summary: 'No supported language detected' };
       return {
         score,
         summary: `Lint: ${notes.join('; ')}`,
         suggestion:
           score < 1
-            ? 'Configure a fast linter (eslint/biome for JS, ruff for Python) and expose it as a `lint` script.'
+            ? 'Configure a fast linter (eslint/biome for JS, ruff for Python, clippy for Rust, golangci-lint for Go) and run it in CI.'
             : undefined,
       };
     },
@@ -199,7 +274,7 @@ export const feedbackChecks: Check[] = [
     title: 'Typecheck command available',
     weight: 2,
     run(ctx): CheckResult {
-      const parts: number[] = [];
+      const parts: Part[] = [];
       const notes: string[] = [];
       if (ctx.languages.includes('typescript')) {
         const scripts = ctx.scripts();
@@ -213,13 +288,13 @@ export const feedbackChecks: Check[] = [
             ),
         );
         if (typecheckScript) {
-          parts.push(1);
+          parts.push(part(ctx, 1, 'typescript'));
           notes.push(`"${typecheckScript[0]}" script`);
         } else if (projectTsconfigs(ctx).length > 0) {
-          parts.push(0.6);
+          parts.push(part(ctx, 0.6, 'typescript'));
           notes.push('tsconfig.json but no typecheck script');
         } else {
-          parts.push(0.2);
+          parts.push(part(ctx, 0.2, 'typescript'));
           notes.push('TypeScript without tsconfig.json');
         }
       }
@@ -233,12 +308,20 @@ export const feedbackChecks: Check[] = [
           pyHas(ctx, 'tool.basedpyright') ||
           ctx.has('pyrightconfig.json');
         if (mypy || pyright) {
-          parts.push(1);
+          parts.push(part(ctx, 1, 'python'));
           notes.push(mypy ? 'mypy' : 'pyright');
         } else {
-          parts.push(0);
+          parts.push(part(ctx, 0, 'python'));
           notes.push('no mypy/pyright config');
         }
+      }
+      if (hasRust(ctx)) {
+        parts.push(part(ctx, 1, 'rust'));
+        notes.push('`cargo check`');
+      }
+      if (hasGo(ctx)) {
+        parts.push(part(ctx, 1, 'go'));
+        notes.push('`go build ./...`');
       }
       const score = avg(parts);
       if (score === null) return { score: null, summary: 'No typed language detected' };
