@@ -1,4 +1,4 @@
-# agent-ready v0.1.1
+# mintwork agent-ready v0.1.1
 
 **Lighthouse for AI coding agents, now on the GitHub Marketplace.** Score how well Claude Code,
 Codex and Cursor can work in your repository, and keep it from regressing in CI.

@@ -1,4 +1,4 @@
-name: agent-ready
+name: mintwork agent-ready
 description: Score how well AI coding agents can work in your repo (0-100) and fail CI below a threshold.
 author: mintwork
 branding:
