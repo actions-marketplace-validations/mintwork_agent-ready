@@ -1,4 +1,5 @@
 import { builtinChecks } from './checks/index.js';
+import { docQuality } from './checks/template.js';
 import { createContext, type RepoContext } from './context.js';
 import type {
   CategoryId,
@@ -70,23 +71,33 @@ export async function scanContext(ctx: RepoContext, opts: ScanOptions = {}): Pro
       result = { score: null, summary: `Check crashed: ${(err as Error).message}` };
     }
     const score = result.score === null ? null : Math.max(0, Math.min(1, result.score));
+    const potential =
+      result.potential === undefined ? undefined : Math.max(0, Math.min(1, result.potential));
     outcomes.push({
       ...result,
       score,
+      potential,
       id: check.id,
       category: check.category,
       title: check.title,
       weight: check.weight * Math.max(0.05, Math.min(1, result.weightScale ?? 1)),
-      fixable: Boolean(check.fix) && score !== null && score < 1,
+      // A score held back only by an unedited generated doc isn't something --fix can improve.
+      fixable: Boolean(check.fix) && score !== null && (potential ?? score) < 1,
       durationMs: Date.now() - t0,
     });
   }
   const { score, categories } = computeScores(outcomes);
+  const potentialScore = outcomes.some((o) => o.potential !== undefined)
+    ? computeScores(outcomes.map((o) => ({ ...o, score: o.potential ?? o.score }))).score
+    : score;
+  const templateDocs = potentialScore > score ? docQuality(ctx).templateDocs : [];
   return {
     tool: { name: NAME, version: VERSION },
     root: ctx.root,
     score,
     grade: grade(score),
+    potentialScore,
+    templateDocs,
     categories,
     checks: outcomes,
     languages: ctx.languages,

@@ -8,6 +8,7 @@ import {
 } from '../fix/agents-md.js';
 import type { Check, FileChange, Finding } from '../types.js';
 import { type ContextDoc, findContextDocs, isRootDoc } from './docs.js';
+import { capForTemplate } from './template.js';
 
 const NO_DOC = 'No agent context file (AGENTS.md / CLAUDE.md / .cursor/rules)';
 
@@ -282,7 +283,7 @@ function noDocResult(primary = false) {
     : { score: 0, summary: 'needs a context file' };
 }
 
-export const contextChecks: Check[] = [
+const rawContextChecks: Check[] = [
   {
     id: 'context.exists',
     category: 'context',
@@ -354,7 +355,13 @@ export const contextChecks: Check[] = [
     run(ctx) {
       const docs = rootDocs(ctx);
       if (docs.length === 0) return noDocResult();
-      const all = docs.map((d) => d.content).join('\n');
+      // A `- \`src/\` — TODO: describe` placeholder doesn't describe anything.
+      const all = docs
+        .map((d) => d.content)
+        .join('\n')
+        .split('\n')
+        .filter((l) => !/\bTODO\b/.test(l))
+        .join('\n');
       const heading =
         /^#{1,4}\s*.*\b(architecture|structure|layout|overview|organi[sz]ation|codebase|modules|directories|how it works|design)\b/im.test(
           all,
@@ -559,3 +566,22 @@ export const contextChecks: Check[] = [
     },
   },
 ];
+
+/** Content-quality checks that an unedited generated doc can only partly satisfy. */
+const TEMPLATE_CAPPED = new Set([
+  'context.exists',
+  'context.commands',
+  'context.architecture',
+  'context.fresh',
+  'context.length',
+]);
+
+export const contextChecks: Check[] = rawContextChecks.map((c) =>
+  TEMPLATE_CAPPED.has(c.id)
+    ? {
+        ...c,
+        run: async (ctx, opts) =>
+          capForTemplate(ctx, await c.run(ctx, opts), c.id === 'context.exists'),
+      }
+    : c,
+);

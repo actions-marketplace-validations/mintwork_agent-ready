@@ -42,6 +42,11 @@ export function renderTerminal(report: Report, colors: Colors, opts: TerminalOpt
   out.push(
     `  ${c('bold', 'Agent-ready score')}  ${c(sc, c('bold', `${report.score}`))}${c('gray', '/100')}  ${c(sc, bar(report.score, 24))}  ${c(sc, report.grade)}`,
   );
+  if (report.potentialScore > report.score) {
+    out.push(
+      `  ${c('yellow', `Fill in the TODO sections in ${report.templateDocs.join(', ')} to unlock the remaining +${report.potentialScore - report.score} points.`)}`,
+    );
+  }
   out.push('');
   for (const cat of report.categories) {
     const label = cat.title.padEnd(16);

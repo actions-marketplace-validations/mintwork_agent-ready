@@ -102,9 +102,17 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
         log.write(
           `\n  ${colors.c('bold', 'Score')}: ${before} → ${colors.c('green', String(report.score))}\n`,
         );
-        if (res.written.some((w) => w.path.endsWith('.md'))) {
+        const unlock = report.potentialScore - report.score;
+        if (unlock > 0) {
           log.write(
-            `  ${colors.c('gray', 'Review the generated docs and fill in the TODOs — the best context is written by people who know the code.')}\n`,
+            `  ${colors.c('yellow', `Fill in the TODO sections in ${report.templateDocs.join(', ')} to unlock the remaining +${unlock} points.`)}\n`,
+          );
+          log.write(
+            `  ${colors.c('gray', 'Generated docs earn partial credit until a human edits them — the best context is written by people who know the code.')}\n`,
+          );
+        } else if (res.written.some((w) => w.path.endsWith('.md'))) {
+          log.write(
+            `  ${colors.c('gray', 'Review the generated docs — the best context is written by people who know the code.')}\n`,
           );
         }
       }

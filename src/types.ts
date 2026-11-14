@@ -24,6 +24,8 @@ export interface CheckResult {
    * written in the language the check is about.
    */
   weightScale?: number;
+  /** Score this check would get without a temporary cap (e.g. an unedited generated doc). */
+  potential?: number;
 }
 
 export interface FileChange {
@@ -80,6 +82,10 @@ export interface Report {
   checks: CheckOutcome[];
   languages: string[];
   fileCount: number;
+  /** Score once generated docs are filled in (equals `score` when nothing is capped). */
+  potentialScore: number;
+  /** Generated, still-unedited context docs holding the score back. */
+  templateDocs: string[];
   /** True when the repo had more files than agent-ready scans; results cover a subset. */
   truncated: boolean;
   /** Wall time for the whole scan, including listing files. */

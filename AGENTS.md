@@ -49,4 +49,7 @@ node dist/bin.js .   # run the CLI against this repo (build first)
 ## Gotchas
 
 - Scoring changes shift everyone's badge. Treat weights in `src/scan.ts` and per-check `weight` as public API.
+- Unedited generated docs are capped (`src/checks/template.ts`): if you change the template in
+  `src/fix/agents-md.ts`, keep `GENERATED_MARKER` and the `TODO` placeholders, or `--fix` output
+  will start earning full credit.
 - `git ls-files -c` includes deleted-but-unstaged files; reads return `null` for those, so always handle `null`.
