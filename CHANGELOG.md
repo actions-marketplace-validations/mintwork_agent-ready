@@ -78,6 +78,23 @@ releases; any change that moves scores is called out here.
     (implicit members) and cargo-fuzz `fuzz/` crates are understood.
   - Score effect: tokio 66 → 65 (9.4 unsafe/kloc), hugo 80 → 78 (15 any/kloc), zap types 100 → 95,
     ripgrep 62 → 63 (workspace check passes); ollama, cobra, hyper and codex are unchanged overall.
+- Basic Java/Kotlin support:
+  - Detection: a root `pom.xml`/`build.gradle(.kts)`/`settings.gradle(.kts)` with `.java`/`.kt`
+    files, or a significant share of JVM code. An `android/` folder in a JS app does not count.
+  - The existing checks now score the JVM side:
+    - `feedback.test`: tests under `src/test/` or `*Test`/`*IT`/`*Spec`, run via
+      `./mvnw test`/`mvn test`/`./gradlew test`.
+    - `feedback.lint`: checkstyle, spotless, PMD, SpotBugs, Error Prone, ktlint or detekt in the
+      build or config files (1.0), otherwise compiler warnings only (0.6).
+    - `feedback.typecheck`: compile. With `--run`, `feedback.typecheck-passes` runs
+      `mvn compile` / `./gradlew classes` (and `feedback.speed` runs the Maven/Gradle tests).
+    - `types.static`: Java/Kotlin count as compiler-checked.
+  - `--fix` generates Maven/Gradle build and test commands, and docs that list `./mvnw` commands
+    are recognized.
+  - `target/` (Maven, Cargo) is suggested for `.gitignore` when it is present, untracked and
+    not ignored.
+  - Score effect: Java repos used to be scored on CI alone, with type safety n/a. Now, for
+    example: gson 61 → 67, spring-petclinic 63 → 69, timber 58 → 64. No non-JVM repo moved.
 
 ### Changed
 
