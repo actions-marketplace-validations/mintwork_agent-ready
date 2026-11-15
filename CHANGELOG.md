@@ -58,6 +58,14 @@ releases; any change that moves scores is called out here.
   cargo, TAP). The first run is shared with `feedback.speed`, so the suite runs twice, not three times.
 - `--timeout <seconds>`: per-command timeout for `--run` (default 300).
 - Scores without `--run` are unchanged. All new checks are n/a unless you opt in.
+- New check `context.drift` (weight 1): doc staleness from git history (local `git log`, no
+  network). A context doc is drifting when it hasn't been committed for 90+ days (relative to HEAD)
+  and 25+ later commits edited the files it names or added/removed files in the directories it
+  describes. Manifests, lockfiles and other docs don't count. Symlinked docs are judged by their
+  target, docs with uncommitted edits are skipped, and the check is n/a outside git, in shallow
+  clones and for docs that reference no code. Score: 1 − 0.5 × the share of drifting docs.
+  Effect on real repos: excalidraw 88 → 87 (a 537-day-old CLAUDE.md); repos with recently edited
+  docs gain a passing check (openai-agents-python 85 → 86, vitest context 87 → 88).
 
 ### Changed
 
