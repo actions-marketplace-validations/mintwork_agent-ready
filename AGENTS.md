@@ -28,7 +28,9 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
   the per-package breakdown for monorepos (`scanWorkspaces`).
 - `src/workspaces.ts` — detects npm/pnpm/yarn/bun, Cargo and Go workspaces; `createPackageContext()`
   in `context.ts` derives a package's context (with inherited root configs) without re-listing files.
-- `src/fix/` — `agents-md.ts` generates starter docs; `index.ts` plans and applies changes safely.
+- `src/fix/` — `agents-md.ts` generates starter docs; `env-example.ts` builds the env-var template (names
+  only, never values); `strict-plan.ts` is the report-only tsconfig strict plan; `index.ts` plans and
+  applies changes safely.
 - `src/report/` — terminal renderer, shields.io badge and SARIF (`sarif.ts`, for code scanning).
 - `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
   path classifiers (`paths.ts`: test/fixture/example paths).
