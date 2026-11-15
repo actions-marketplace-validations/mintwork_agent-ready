@@ -38,8 +38,15 @@ export interface ScanOptions extends Partial<RunOptions> {
 
 /** Categories that make sense for one package on its own; docs and safety are repo-wide. */
 const PACKAGE_CATEGORIES = new Set<CategoryId>(['feedback', 'navigability', 'types']);
-/** Repo-level checks inside those categories (one CI and README per repo is normal). */
-const REPO_ONLY_CHECKS = new Set(['feedback.ci', 'feedback.speed', 'nav.readme']);
+/** Repo-level checks inside those categories (one CI and README per repo is normal; --run checks run once). */
+const REPO_ONLY_CHECKS = new Set([
+  'feedback.ci',
+  'feedback.speed',
+  'feedback.lint-passes',
+  'feedback.typecheck-passes',
+  'feedback.flaky',
+  'nav.readme',
+]);
 /** Packages scored one by one (the largest by code size); the rest are only counted. */
 const MAX_SCORED_PACKAGES = 60;
 
@@ -160,6 +167,7 @@ export async function scanContext(ctx: RepoContext, opts: ScanOptions = {}): Pro
   const runOpts: RunOptions = {
     run: opts.run ?? false,
     runTimeoutMs: opts.runTimeoutMs ?? 300_000,
+    flaky: opts.flaky ?? false,
   };
   const checks = opts.checks ?? builtinChecks;
   const outcomes = await runChecks(ctx, enabledChecks(ctx, checks), runOpts);

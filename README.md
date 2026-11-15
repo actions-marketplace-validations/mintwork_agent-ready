@@ -113,7 +113,9 @@ npx @mintwork/agent-ready [path] [options]
                      .cursorignore/.ignore, .env.example) and print a strict-mode migration plan
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
-  --run              Execute the test command and score its speed
+  --run              Execute the test, lint and typecheck commands (runs project code)
+  --flaky            With --run: run the tests twice and flag flaky results
+  --timeout <s>      With --run: per-command timeout in seconds (default 300)
   --min-score <n>    Exit 1 if the score is below n (CI gating)
   --verbose, -v      Show passing checks and all findings
   --no-color         Disable colors
@@ -141,10 +143,18 @@ It also:
 | Category           | Weight | Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Context docs**   | 30%    | `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / Copilot / Gemini instructions exist · they list exact build, test and lint commands · they describe architecture and key directories · **not stale**: every referenced path and `npm run` script actually exists · not too long (or too thin) · both `AGENTS.md` and `CLAUDE.md` so every agent is covered · `.cursor/rules/*.mdc` actually apply (frontmatter, globs that match files) · monorepos: large workspace packages have a nested `AGENTS.md` or are mentioned in the root docs |
-| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast                                                                                                                                                                                                                                                 |
+| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast, lint and typecheck pass, `--flaky` flags tests that change result between two runs                                                                                                                                                             |
 | **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                                                                                                                                                                                                            |
 | **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                                                                                                                                                                                                            |
 | **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                                                                                                                                                                                               |
+
+**`--run` executes project code**, so it is opt-in. It runs the test command (timed), the lint
+command and the typecheck command the report detected (package.json scripts, `make` targets,
+ruff/mypy, `go vet`/`go build`, `cargo clippy`/`cargo check`). Scripts that publish or delete are
+never run. `--flaky` runs the test suite a second time and compares the results, including which
+tests failed for vitest/jest, pytest, `go test`, `cargo test` and TAP output. Each command gets a
+timeout (`--timeout`, default 300s), and on timeout the whole process tree is killed. Only use
+`--run` on repos you trust.
 
 Checks that don't apply (e.g. Python checks in a TS repo) are marked n/a and excluded from the score.
 Agent-tooling checks (MCP, hooks, permissions, Cursor rules) are n/a unless the repo ships that
@@ -268,7 +278,7 @@ whatever `npm run build` does.
 ## Roadmap
 
 - [ ] Deeper Go and Rust checks (unsafe/`interface{}` density, nested `Cargo.toml` workspaces) and Java/Kotlin support
-- [ ] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
+- [x] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
 - [x] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
 - [ ] Doc staleness via git history (doc untouched while referenced code churned)
 - [x] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions, `.cursor/rules`)
