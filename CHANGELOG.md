@@ -24,6 +24,21 @@ releases; any change that moves scores is called out here.
   only monorepos with context docs can see a score change (e.g. vitest: context docs 87 → 88,
   overall unchanged at 91).
 - `createPackageContext()` builds a context for one package from its repo's context.
+- Agent tooling checks. Each one is n/a unless the repo ships that config, so repos that don't use
+  a tool are unaffected:
+  - `feedback.mcp` (weight 1): `.mcp.json`, `.cursor/mcp.json` and `.vscode/mcp.json` parse, and
+    each server has a `command` or an http(s) `url`. Local scripts it runs must exist (build
+    output and gitignored paths are skipped). Credentials should be `${VAR}` expansions, not
+    literals.
+  - `feedback.hooks` (weight 1): Claude Code hooks in `.claude/settings.json` use real event names
+    (catches `preToolUse`-style typos), valid matcher regexes, the right shape and scripts that exist.
+  - `safety.agent-permissions` (weight 1): flags committed `Bash`/`Bash(*)` allow rules,
+    `defaultMode: "bypassPermissions"`, pre-approved shells/interpreters/`rm`/`curl`/`git push`,
+    `enableAllProjectMcpServers`, and Codex `sandbox_mode = "danger-full-access"`.
+  - `context.cursor-rules` (weight 1): every `.cursor/rules/*.mdc` applies on its own (frontmatter
+    with `alwaysApply`, a `description` or `globs` that match files) and isn't empty.
+    Score impact on repos that use these tools: Continuous-Claude-v3 49 → 50, nano-agent 44 → 46,
+    spectrum-design-data 83 → 84; home-ops stays 52 (a rule that never applies, valid MCP config).
 
 ## [0.1.1] - 2026-11-14
 
