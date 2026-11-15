@@ -38,13 +38,17 @@ export interface ScanOptions extends Partial<RunOptions> {
 
 /** Categories that make sense for one package on its own; docs and safety are repo-wide. */
 const PACKAGE_CATEGORIES = new Set<CategoryId>(['feedback', 'navigability', 'types']);
-/** Repo-level checks inside those categories (one CI and README per repo is normal; --run checks run once). */
+/**
+ * Repo-level checks inside those categories: one CI, README and cargo workspace per repo is
+ * normal, and the --run checks run once for the whole repo.
+ */
 const REPO_ONLY_CHECKS = new Set([
   'feedback.ci',
   'feedback.speed',
   'feedback.lint-passes',
   'feedback.typecheck-passes',
   'feedback.flaky',
+  'feedback.cargo-workspace',
   'nav.readme',
 ]);
 /** Packages scored one by one (the largest by code size); the rest are only counted. */

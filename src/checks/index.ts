@@ -3,6 +3,7 @@ import { agentToolingChecks } from './agent-tooling.js';
 import { contextChecks } from './context-docs.js';
 import { docHistoryCheck } from './doc-history.js';
 import { feedbackChecks } from './feedback.js';
+import { goRustChecks } from './go-rust.js';
 import { navigabilityChecks } from './navigability.js';
 import { runChecks } from './run-checks.js';
 import { safetyChecks } from './safety.js';
@@ -17,6 +18,7 @@ export const builtinChecks: Check[] = [
   ...navigabilityChecks,
   ...typeSafetyChecks,
   ...safetyChecks,
+  ...goRustChecks,
   docHistoryCheck,
   ...agentToolingChecks,
   ...runChecks,
